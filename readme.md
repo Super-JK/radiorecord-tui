@@ -1,4 +1,4 @@
-#RadioRecord-tui
+# RadioRecord-tui
 ⚠️**This project is in very early stage and contains a lot of bugs (more on that later)**
 
 A simple terminal interface for listening to radio record web station.
@@ -14,11 +14,11 @@ cargo install
 ```
 However, the program will crash for now if it doesn't find the ascii.json file at the right location.
 
-##Bugs and enhancements
+## Bugs and enhancements
 
 Like said previously, there is a lot to do in this project. It this poorly written and has a lot if bugs.
 
-###List of known issues/thing to do
+### List of known issues/thing to do
 - Sometimes the radio won't start and if you try a second time it will play it two time
 - Program crash when ascii.json is not found (Create auto gen with tools.rs)
 - Better handling of the various exception (Especially within the "api")

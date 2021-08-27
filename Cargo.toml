@@ -1,5 +1,12 @@
 [package]
 name = "radiorecord-tui"
+description = "A simple terminal interface for listening to radio record web stations"
+homepage = "https://gitlab.com/vandechat96/radiorecord-tui"
+documentation = "https://gitlab.com/vandechat96/radiorecord-tui"
+repository = "https://gitlab.com/vandechat96/radiorecord-tui"
+keywords = ["radiorecord", "tui", "cli", "terminal"]
+categories = ["command-line-utilities"]
+authors = ["Super_JK"]
 version = "0.1.0"
 edition = "2018"
 
