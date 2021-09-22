@@ -1,6 +1,4 @@
 use std::fs::File;
-use std::io::{BufReader};
-use rodio::{Decoder, OutputStream, Source};
 
 use curl::easy::{Easy, WriteError};
 use std::io::{Write};
@@ -8,6 +6,45 @@ use std::thread;
 use std::time::Duration;
 use std::sync::{Arc};
 use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(feature = "libmpv_player")]
+use libmpv::{Mpv, FileState};
+
+#[cfg(feature = "libmpv_player")]
+macro_rules! play {
+    ($_playing:ident) => {
+        let mpv = Mpv::new().unwrap();
+        mpv.set_property("volume", 100).unwrap();
+        mpv.set_property("vo", "null").unwrap();
+        mpv.playlist_load_files(&[("/tmp/rrsound", FileState::AppendPlay, None)]).unwrap();
+    }
+}
+
+#[cfg(feature = "rodio_player")]
+use {
+    std::io::{BufReader},
+    rodio::{Decoder, OutputStream, Source}
+};
+
+#[cfg(feature = "rodio_player")]
+macro_rules! play {
+    ($playing:ident) => {
+        let (_stream, handle) = OutputStream::try_default().expect("no output found");
+
+        let source = loop {
+            match Decoder::new(BufReader::new(File::open("/tmp/rrsound").expect("file not found"))) {
+                Ok(source) => break source,
+                Err(_) => {},
+            };
+            if !$playing.load(Ordering::Acquire) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        };
+
+        let _res = handle.play_raw(source.convert_samples());
+    }
+}
 
 pub struct Player {
     playing:Arc<AtomicBool>,
@@ -54,40 +91,15 @@ impl Player{
             let playing = self.playing.clone();
 
             thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(200));
+                std::thread::sleep(Duration::from_millis(1500));
+                play!(playing);
 
-                let (_stream, handle) = OutputStream::try_default().expect("no output found");
-
-
-                let source = loop {
-                    match Decoder::new(BufReader::new(File::open("/tmp/rrsound").expect("file not found"))) {
-                        Ok(source) => break source,
-                        Err(_) => {},
-                    };
-                    if !playing.load(Ordering::Acquire) {
-                        return;
-                    }
-                    std::thread::sleep(Duration::from_millis(500));
-                };
-
-
-                let res = handle.play_raw(source.convert_samples());
                 loop {
-                    if let Err(_) = res {
-                        println!("play error");
-                        break;
-                    }
                     if !playing.load(Ordering::Acquire) {
                         break;
                     }
                     thread::sleep(Duration::from_millis(100));
                 }
-                /*
-                let sink = Sink::try_new(&handle).unwrap();
-                sink.append(source);
-                sink.sleep_until_end();
-                self.sink=Some(sink);
-                 */
             });
         }
     }

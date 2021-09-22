@@ -357,17 +357,8 @@ fn generate_status<'a>(status:&Vec<&'a str>) ->Vec<Spans<'a>>{
     status
         .iter()
         .map(|t| {
-            //let (first, rest) = t.split_at(1);
             Spans::from(vec![
-                /*Span::styled(
-                    first,
-                    Style::default()
-                        .fg(Color::Red)
-                        .add_modifier(Modifier::UNDERLINED),
-                ),
-
-             */
-                Span::styled(*t, Style::default().fg(Color::Gray)),
+                Span::styled(*t, Style::default()),
             ])
         })
         .collect()
@@ -375,10 +366,8 @@ fn generate_status<'a>(status:&Vec<&'a str>) ->Vec<Spans<'a>>{
 
 fn status_bar(status:Vec<Spans>) ->Tabs{
     Tabs::new(status)
-        //.select(active_menu_item.into())
         .block(Block::default().title("Status").borders(Borders::ALL))
-        .style(Style::default().fg(Color::Gray))
-        //.highlight_style(Style::default().fg(Color::Red))
+        .style(Style::default())
         .divider(Span::raw("|"))
 }
 
@@ -400,7 +389,7 @@ pub fn render_help<'a>() -> Paragraph<'a> {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::Gray))
+                .style(Style::default())
                 .title("Help")
                 .border_type(BorderType::Plain),
         );
@@ -415,7 +404,7 @@ pub fn render_stations_list<'a>(stations_list:&Vec<Station>,fav:bool) -> List<'a
     };
     let stations = Block::default()
         .borders(Borders::ALL)
-        .style(Style::default().fg(Color::Gray))
+        .style(Style::default())
         .title(title)
         .border_type(BorderType::Plain);
 
@@ -447,12 +436,17 @@ fn render_icon<'a>(icon_list: &Value, stations_list_state: &ListState, stations_
         )
         .expect("exists")
         .clone();
-    Paragraph::new(format!("{}",icon_list[selected_station.prefix].as_str().unwrap()))
+
+    let icon = match icon_list[selected_station.prefix].as_str() {
+        None => "no_icon",
+        Some(icon)=>icon
+    };
+    Paragraph::new(format!("{}",icon))
         .alignment(Alignment::Center)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::Gray))
+                .style(Style::default())
                 //.title("")
                 .border_type(BorderType::Plain),
         )
@@ -472,7 +466,6 @@ fn station_detail<'a>(stations_list_state: &ListState, stations_list:&Vec<Statio
         Cell::from(Span::raw(selected_station.id.to_string())),
         Cell::from(Span::raw(selected_station.title)),
         Cell::from(Span::raw(selected_station.tooltip)),
-        //Cell::from(Span::raw(selected_station.created_at.to_string())),
     ])])
         .header(Row::new(vec![
             Cell::from(Span::styled(
@@ -484,19 +477,9 @@ fn station_detail<'a>(stations_list_state: &ListState, stations_list:&Vec<Statio
                 Style::default().add_modifier(Modifier::BOLD),
             )),
             Cell::from(Span::styled(
-                "Tooltip",
+                "Description",
                 Style::default().add_modifier(Modifier::BOLD),
             )),
-            /*
-           Cell::from(Span::styled(
-               "Icon",
-               Style::default().add_modifier(Modifier::BOLD),
-           )),
-
-           Cell::from(Span::styled(
-               "Created At",
-               Style::default().add_modifier(Modifier::BOLD),
-           ))*/
         ]))
         .block(
             Block::default()

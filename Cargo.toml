@@ -21,9 +21,15 @@ tui = { version = "0.16", default-features = false, features = ['crossterm', 'se
 thiserror = "1.0"
 
 rodio = { git ="https://github.com/RustAudio/rodio",default-features = false, features = ['symphonia-aac']  }
+libmpv = { version = "2.0.1", features=["default"]}
 curl = "0.4.38"
 
 asciifyer= {version="0.1.1" }
+
+[features]
+default = ["libmpv_player"]
+libmpv_player = []
+rodio_player = []
 
 [[bin]]
 bench = false
