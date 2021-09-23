@@ -17,8 +17,7 @@ cargo install --path .
 However, the program will crash for now if it doesn't find the ascii.json file at the right location.
 
 #### Audio Player
-By default, the player use libmpv (better audio) but you can specify to use rodio with `--features rodio_player --no-default-features
-`
+By default, the player use libmpv (better audio) but you can specify to use rodio with `--features rodio_player --no-default-features`
 
 ## Bugs and enhancements
 
@@ -26,7 +25,7 @@ Like said previously, there is a lot to do in this project. It this poorly writt
 
 ### List of known issues/thing to do
 - Sometimes the radio won't start and if you try a second time it will play it two time
-- Program crash when ascii.json is not found (Create auto gen with tools.rs)
+- ~~Program crash when ascii.json is not found (Create auto gen with tools.rs)~~
 - Better handling of the various exception (Especially within the "api")
 - Rewrite the ui part to make it more clear and clean
 - Find where come the thread that doesn't die

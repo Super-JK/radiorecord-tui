@@ -24,6 +24,7 @@ rodio = { git ="https://github.com/RustAudio/rodio",default-features = false, fe
 libmpv = { version = "2.0.1", features=["default"]}
 curl = "0.4.38"
 
+dirs-next = "2.0.0"
 asciifyer= {version="0.1.1" }
 
 [features]

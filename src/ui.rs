@@ -1,6 +1,6 @@
 use tui::{
     backend::CrosstermBackend,
-    layout::{Alignment, Constraint,Direction, Layout},
+    layout::{Alignment, Constraint,Direction, Layout,Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{
@@ -9,33 +9,31 @@ use tui::{
     Terminal,
 };
 
-use crate::api::{Station, now_playing};
-
 use crossterm::{
     event::{self, Event as CEvent, KeyCode},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
-
-use std::{io, fs};
-use std::sync::mpsc;
-use std::thread;
-use std::time::{Duration, Instant};
-use crate::{api, player};
-use tui::layout::Rect;
-use thiserror::Error;
 use serde_json::Value;
+
+use std::{
+    io,
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant}
+};
+
 use std::process::exit;
 
-const FAV_PATH: &str = "./data/fav.json";
-const ACCENT_COLOR:Color = Color::Rgb(255,96,0);
+use crate::{
+    api::{
+        Station,
+        now_playing,
+        radio_list
+    },
+    player};
+use crate::config::{read_favorite, toggle_to_favorite, read_icons};
 
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("error reading the DB file: {0}")]
-    ReadDBError(#[from] io::Error),
-    #[error("error parsing the DB file: {0}")]
-    ParseDBError(#[from] serde_json::Error),
-}
+const ACCENT_COLOR:Color = Color::Rgb(255,96,0);
 
 enum Event<I> {
     Input(I),
@@ -96,25 +94,6 @@ impl Status{
 }
 
 pub fn start_ui() -> Result<(), Box<dyn std::error::Error>>{
-    let stations_list_std =match  api::radio_list(){
-        Ok(list)=>list,
-        Err(_)=> {
-            eprintln!("No connection available !");
-            exit(1) },
-    };
-
-    let stations_len = stations_list_std.len();
-    let mut stations_list_fav = match read_favorite(){
-        Ok(list)=>list,
-        Err(_)=> Vec::new(),
-    };
-
-    let mut stations_list = stations_list_fav.clone();
-    let mut player = player::Player::new();
-
-    let icon_list:Value = serde_json::from_str( fs::read_to_string("./data/ascii.json").unwrap().as_str()).unwrap();
-
-
     enable_raw_mode().expect("can not run in raw mode");
 
     let (tx, rx) = mpsc::channel();
@@ -146,9 +125,34 @@ pub fn start_ui() -> Result<(), Box<dyn std::error::Error>>{
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
+    let stations_list_std =match  radio_list(){
+        Ok(list)=>list,
+        Err(_)=> {
+            eprintln!("No connection available !");
+            exit(1) },
+    };
+
+    let stations_len = stations_list_std.len();
+    let mut stations_list_fav = Vec::new();
+    let mut stations_list =stations_list_std.clone();
+    let mut active_context = Context::Standard;
+
+    match read_favorite() {
+        Ok(list)=>{
+            stations_list_fav = list;
+            if stations_list_fav.len() > 0 {
+                stations_list = stations_list_fav.clone();
+                active_context = Context::Favorite
+            }
+        },
+        Err(_)=> {},
+    };
+
+
+    let mut player = player::Player::new();
+    let icon_list:Value = read_icons().unwrap();
 
     let mut active_menu_item = MenuItem::Stations;
-    let mut active_context = Context::Favorite;
     let mut stations_list_state = ListState::default();
     let selected = 0;
     stations_list_state.select(Some(selected));
@@ -292,9 +296,11 @@ pub fn start_ui() -> Result<(), Box<dyn std::error::Error>>{
                 KeyCode::Up => {
                     match active_context{
                         Context::Change=>{
-                            active_context=Context::Favorite;
-                            stations_list= stations_list_fav.clone();
-                            stations_list_state.select(Some(0));
+                            if stations_list_fav.len() > 0 {
+                                active_context = Context::Favorite;
+                                stations_list= stations_list_fav.clone();
+                                stations_list_state.select(Some(0));
+                            };
                         },
                         _=>{
                             if let Some(selected) = stations_list_state.selected() {
@@ -437,7 +443,7 @@ fn render_icon<'a>(icon_list: &Value, stations_list_state: &ListState, stations_
         .expect("exists")
         .clone();
 
-    let icon = match icon_list[selected_station.prefix].as_str() {
+    let icon = match icon_list[selected_station.prefix+"_60"].as_str() {
         None => "no_icon",
         Some(icon)=>icon
     };
@@ -447,7 +453,6 @@ fn render_icon<'a>(icon_list: &Value, stations_list_state: &ListState, stations_
             Block::default()
                 .borders(Borders::ALL)
                 .style(Style::default())
-                //.title("")
                 .border_type(BorderType::Plain),
         )
 }
@@ -492,30 +497,8 @@ fn station_detail<'a>(stations_list_state: &ListState, stations_list:&Vec<Statio
             Constraint::Percentage(5),
             Constraint::Percentage(15),
             Constraint::Percentage(80),
-            //Constraint::Percentage(50),
-            //Constraint::Percentage(20),
         ])
 }
 
-fn toggle_to_favorite(station:Station) -> Result<Vec<Station>, Error> {
-    let db_content = fs::read_to_string(FAV_PATH)?;
-    let mut parsed: Vec<Station> = serde_json::from_str(&db_content)?;
 
-    if  !parsed.contains(&station){
-        parsed.push(station);
-        fs::write(FAV_PATH, &serde_json::to_vec(&parsed)?)?;
-    } else {
-        let index = parsed.iter().position(|x| *x == station).unwrap();
-        parsed.remove(index);
-        fs::write(FAV_PATH, &serde_json::to_vec(&parsed)?)?;
-    }
-    Ok(parsed)
-
-}
-
-fn read_favorite() -> Result<Vec<Station>, Error> {
-    let db_content = fs::read_to_string(FAV_PATH)?;
-    let parsed: Vec<Station> = serde_json::from_str(&db_content)?;
-    Ok(parsed)
-}
 
