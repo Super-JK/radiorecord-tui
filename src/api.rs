@@ -64,7 +64,7 @@ pub enum ApiError {
 Fetch the list of stations and some information about them
  */
 pub fn radio_list()->Result<Vec<Station>,ApiError> {
-    let data= read("https://radiorecord.ru/api/stations/")?;
+    let data= read("https://www.radiorecord.ru/api/stations/")?;
 
     let str_ = std::str::from_utf8(&data).unwrap();
     let json:Res = serde_json::from_str(str_).unwrap();
@@ -75,13 +75,13 @@ pub fn radio_list()->Result<Vec<Station>,ApiError> {
 /**
 Fetch a list the song and artist in the history of a station
 */
-pub fn now_playing(id:u16)->Result<Vec<Title>,ApiError>{
-    let data = read(format!("https://radiorecord.ru/api/station/history/?id={}",id).as_str())?;
+pub fn now_playing(id:u16)->Result<Title,ApiError>{
+    let data = read(format!("https://www.radiorecord.ru/api/station/history/?id={}",id).as_str())?;
 
     let str_ = std::str::from_utf8(&data).unwrap();
     let json:ResHistory = serde_json::from_str(str_).unwrap();
 
-    Ok(json.result.history)
+    Ok(json.result.history[0].clone())
 }
 
 

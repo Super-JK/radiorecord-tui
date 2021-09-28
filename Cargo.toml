@@ -2,12 +2,14 @@
 name = "radiorecord-tui"
 description = "A simple terminal interface for listening to radio record web stations"
 homepage = "https://gitlab.com/vandechat96/radiorecord-tui"
-documentation = "https://gitlab.com/vandechat96/radiorecord-tui"
+#documentation = "https://gitlab.com/vandechat96/radiorecord-tui"
 repository = "https://gitlab.com/vandechat96/radiorecord-tui"
+readme = "readme.md"
+license-file = "LICENSE"
 keywords = ["radiorecord", "tui", "cli", "terminal"]
 categories = ["command-line-utilities"]
 authors = ["Super_JK"]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,17 +17,18 @@ edition = "2018"
 [dependencies]
 
 crossterm = { version = "0.20", features = [ "serde" ] }
-serde = {version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 tui = { version = "0.16", default-features = false, features = ['crossterm', 'serde'] }
 thiserror = "1.0"
 
-rodio = { git ="https://github.com/RustAudio/rodio",default-features = false, features = ['symphonia-aac']  }
-libmpv = { version = "2.0.1", features=["default"]}
+rodio = { git ="https://github.com/RustAudio/rodio", default-features = false, features = ['symphonia-aac']  }
+libmpv = { version = "2.0.1", features = ["default"]}
+
 curl = "0.4.38"
+serde = {version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 dirs-next = "2.0.0"
-asciifyer= {version="0.1.1" }
+asciifyer = {version="0.1.1" }
 
 [features]
 default = ["libmpv_player"]

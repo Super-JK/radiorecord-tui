@@ -15,7 +15,9 @@ pub enum Error {
     #[error("error reading config dir")]
     ReadConfigError()
 }
-
+/**
+Add or delete a favorite from the favorite file
+ */
 pub fn toggle_to_favorite(station:Station) -> Result<Vec<Station>, Error> {
     let mut path = get_app_config_path()?;
     path.push("favorite.json");
@@ -33,7 +35,9 @@ pub fn toggle_to_favorite(station:Station) -> Result<Vec<Station>, Error> {
     Ok(parsed)
 
 }
-
+/**
+Read favorite station file or return an empty list
+ */
 pub fn read_favorite() -> Result<Vec<Station>, Error> {
     let mut path = get_app_config_path()?;
     path.push("favorite.json");
@@ -46,7 +50,9 @@ pub fn read_favorite() -> Result<Vec<Station>, Error> {
         Ok(parsed)
     }
 }
-
+/**
+Read the file containing ascii art for icons. If it doesnt exist generate it
+ */
 pub fn read_icons() -> Result<Value,Error> {
     let mut path = get_app_config_path()?;
     path.push("ascii.json");

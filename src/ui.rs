@@ -1,336 +1,117 @@
 use tui::{
-    backend::CrosstermBackend,
-    layout::{Alignment, Constraint,Direction, Layout,Rect},
+    layout::{
+        Alignment, Constraint, Direction, Layout, Rect
+    },
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{
-        Block, BorderType, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table,Tabs,
+        Block, BorderType, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table, Tabs,
     },
-    Terminal,
+    Frame,
+    backend::Backend
 };
 
-use crossterm::{
-    event::{self, Event as CEvent, KeyCode},
-    terminal::{disable_raw_mode, enable_raw_mode},
-};
 use serde_json::Value;
 
-use std::{
-    io,
-    sync::mpsc,
-    thread,
-    time::{Duration, Instant}
+use crate::{
+    api::Station,
+    app::{App, MenuItem},
 };
 
-use std::process::exit;
+//const ACCENT_COLOR:Color = Color::Rgb(255,96,0);
+const ACCENT_COLOR:Color = Color::Yellow;
 
-use crate::{
-    api::{
-        Station,
-        now_playing,
-        radio_list
-    },
-    player};
-use crate::config::{read_favorite, toggle_to_favorite, read_icons};
+/**
+Display the help menu on the terminal
+ */
+pub fn render_help<B>(rect: &mut Frame<B>, _app: &App)
+    where
+        B: Backend,
+{
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(100)].as_ref())
+        .margin(2)
+        .split(rect.size());
 
-const ACCENT_COLOR:Color = Color::Rgb(255,96,0);
-
-enum Event<I> {
-    Input(I),
-    Tick,
+    rect.render_widget(help_paragraph(), chunks[0])
 }
+/**
+Display the main menu on the terminal
 
-#[derive(Copy, Clone, Debug)]
-enum MenuItem {
-    Stations,
-    Help,
-}
+It used corresponding function  to generate each part and split the terminal into different zones
+ */
+pub fn render_stations<B>(rect: &mut Frame<B>, app: &mut App) where B: Backend,
+{
+    //get base layout
+    let chunks = base_chunk(rect.size());
 
-impl From<MenuItem> for usize {
-    fn from(input: MenuItem) -> usize {
-        match input {
-            MenuItem::Stations => 0,
-            MenuItem::Help => 1,
-        }
-    }
-}
-#[derive(Copy, Clone, Debug)]
-enum Context {
-    Change,
-    Favorite,
-    Standard,
-}
+    //add the status bar
+    let bar = status_bar(&app.get_status());
+    rect.render_widget(bar, chunks[0]);
 
-#[derive(Clone, Debug)]
-struct Status{
-    station:String,
-    playing:bool,
-}
+    //split the rect
+    let stations_chunks = split_horizontal_chunk(chunks[1]);
+    let stations_list_chunks = split_vertical_chunk(stations_chunks[0]);
 
-impl Status{
-    pub fn new(station:String,playing:bool)->Status{
-        Status{
-            station,
-            playing,
-        }
-    }
-    pub fn to_vec(&self)->Vec<&str>{
-        let playing = match self.playing {
-            true=>"Playing",
-            false=>"Paused",
-        };
+    //generate the stations lists
+    let list_std = make_std_stations_list(&app.stations_list_std,  &app.active_menu_item);
+    let list_fav = make_fav_stations_list(&app.stations_list_fav, &app.active_menu_item);
 
-        vec![self.station.as_str(),playing]
-    }
-
-    pub fn set_station(&mut self, station:String){
-        self.station=station;
-    }
-    pub fn set_playing(&mut self, playing:bool){
-        self.playing=playing;
-    }
-
-
-}
-
-pub fn start_ui() -> Result<(), Box<dyn std::error::Error>>{
-    enable_raw_mode().expect("can not run in raw mode");
-
-    let (tx, rx) = mpsc::channel();
-    let tick_rate = Duration::from_millis(200);
-
-    thread::spawn(move || {
-        let mut last_tick = Instant::now();
-        loop {
-            let timeout = tick_rate
-                .checked_sub(last_tick.elapsed())
-                .unwrap_or_else(|| Duration::from_secs(0));
-
-            if event::poll(timeout).expect("poll works") {
-                if let CEvent::Key(key) = event::read().expect("can read events") {
-                    tx.send(Event::Input(key)).expect("can send events");
-                }
-            }
-
-            if last_tick.elapsed() >= tick_rate {
-                if let Ok(_) = tx.send(Event::Tick) {
-                    last_tick = Instant::now();
-                }
-            }
-        }
-    });
-
-    let stdout = io::stdout();
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-    terminal.clear()?;
-
-    let stations_list_std =match  radio_list(){
-        Ok(list)=>list,
-        Err(_)=> {
-            eprintln!("No connection available !");
-            exit(1) },
-    };
-
-    let stations_len = stations_list_std.len();
-    let mut stations_list_fav = Vec::new();
-    let mut stations_list =stations_list_std.clone();
-    let mut active_context = Context::Standard;
-
-    match read_favorite() {
-        Ok(list)=>{
-            stations_list_fav = list;
-            if stations_list_fav.len() > 0 {
-                stations_list = stations_list_fav.clone();
-                active_context = Context::Favorite
-            }
+    //add the stations list. Only the active list is navigable
+    match app.active_menu_item {
+        MenuItem::Favorite(true)=>{
+            rect.render_stateful_widget(list_fav, stations_list_chunks[0], &mut app.stations_list_state);
+            rect.render_widget(list_std, stations_list_chunks[1]);
         },
-        Err(_)=> {},
-    };
-
-
-    let mut player = player::Player::new();
-    let icon_list:Value = read_icons().unwrap();
-
-    let mut active_menu_item = MenuItem::Stations;
-    let mut stations_list_state = ListState::default();
-    let selected = 0;
-    stations_list_state.select(Some(selected));
-
-    let mut selected_station = stations_list[selected].clone();
-    let mut title = String::from("Nothing Playing");
-    let mut status = Status::new(selected_station.title.to_string(), player.is_playing());
-
-    loop {
-        terminal.draw(|rect| {
-            let size = rect.size();
-
-            let chunks = base_chunk(size);
-
-            let footer = footer(&title);
-
-            let status_menu = generate_status(&status.to_vec());
-
-            let bar = status_bar(status_menu);
-
-            rect.render_widget(bar, chunks[0]);
-
-            match active_menu_item {
-                MenuItem::Help => rect.render_widget(render_help(), chunks[1]),
-                MenuItem::Stations => {
-                    let stations_chunk = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints(
-                            [Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
-                        )
-                        .split(chunks[1]);
-                    let stations_chunk_test = Layout::default()
-                        .direction(Direction::Vertical)
-                        .constraints(
-                            [Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
-                        )
-                        .split(stations_chunk[0]);
-                    let list = render_stations_list(&stations_list_std,false);
-                    let detail = station_detail(&stations_list_state, &stations_list);
-                    let list_fav = render_stations_list( &stations_list_fav,true);
-
-                    match active_context {
-                        Context::Favorite=>{
-                            rect.render_stateful_widget(list_fav, stations_chunk_test[0], &mut stations_list_state);
-                            rect.render_widget(list, stations_chunk_test[1]);
-                        },
-                        Context::Standard=>{
-                            rect.render_widget(list_fav, stations_chunk_test[0]);
-                            rect.render_stateful_widget(list, stations_chunk_test[1], &mut stations_list_state);
-                        },
-                        Context::Change=>{
-                            rect.render_widget(list_fav, stations_chunk_test[0]);
-                            rect.render_widget(list, stations_chunk_test[1]);
-                        }
-                    }
-                    //rect.render_widget(list_fav, stations_chunk_test[0]);
-                    //rect.render_stateful_widget(list, stations_chunk_test[1], &mut stations_list_state);
-                    let detail_chunk = Layout::default()
-                        .direction(Direction::Vertical)
-                        .constraints(
-                            [Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
-                        )
-                        .split(stations_chunk[1]);
-                    rect.render_widget(detail, detail_chunk[0]);
-                    let icon = render_icon(&icon_list,&stations_list_state, &stations_list);
-                    rect.render_widget(icon, detail_chunk[1]);
-
-                }
-            }
-
-            rect.render_widget(footer, chunks[2]);
-        })?;
-
-        match rx.recv()? {
-            Event::Input(event) => match event.code {
-                KeyCode::Char('q') => {
-                    disable_raw_mode()?;
-                    terminal.show_cursor()?;
-                    break;
-                }
-                KeyCode::Char('h') => active_menu_item = MenuItem::Help,
-                KeyCode::Char('s') => active_menu_item = MenuItem::Stations,
-                KeyCode::Char('f') => {
-                    if let Some(selected) = stations_list_state.selected() {
-                        stations_list_fav = toggle_to_favorite(stations_list[selected].clone()).expect("can add to fav");
-                    }
-
-                }
-                KeyCode::Char('n') => {
-                    title = now_playing(selected_station.id).unwrap()[0].to_string();
-
-                }
-                KeyCode::Char('N') => {
-                    if let Some(selected) = stations_list_state.selected() {
-                        let id = stations_list[selected].id;
-                        title = now_playing(id).unwrap()[0].to_string();
-                    };
-
-                }
-                KeyCode::Char(' ') => {
-                    if let Some(selected) = stations_list_state.selected() {
-                        let same = selected_station == stations_list[selected];
-                        selected_station = stations_list[selected].clone();
-
-                        let playing = player.is_playing();
-                        if (playing && same) || !same {
-                            player.stop()
-                        }
-                        thread::sleep(Duration::from_millis(200));
-                        if (same && !playing ) || !same {
-                            let url = selected_station.clone().stream_320;
-                            player.play(url.clone());
-                        }
-                        status.set_station(selected_station.title.to_string());
-                        status.set_playing(player.is_playing())
-                    }
-                }
-                KeyCode::Down => {
-                    match active_context{
-                        Context::Change=>{
-                            active_context=Context::Standard;
-                            stations_list= stations_list_std.clone();
-                            stations_list_state.select(Some(0));
-                        },
-                        _=> {
-                            if let Some(selected) = stations_list_state.selected() {
-                                let amount_stations = match active_context {
-                                    Context::Favorite => { stations_list_fav.len() },
-                                    _ => stations_len,
-                                };
-                                if selected >= amount_stations - 1 {
-                                    stations_list_state.select(Some(0));
-                                } else {
-                                    stations_list_state.select(Some(selected + 1));
-                                }
-                            }
-                        }
-                    }
-
-                }
-                KeyCode::Up => {
-                    match active_context{
-                        Context::Change=>{
-                            if stations_list_fav.len() > 0 {
-                                active_context = Context::Favorite;
-                                stations_list= stations_list_fav.clone();
-                                stations_list_state.select(Some(0));
-                            };
-                        },
-                        _=>{
-                            if let Some(selected) = stations_list_state.selected() {
-                                let amount_stations = match active_context{
-                                    Context::Favorite=>{ stations_list_fav.len()},
-                                    _=>stations_len,
-                                };
-                                if selected > 0 {
-                                    stations_list_state.select(Some(selected - 1));
-                                } else {
-                                    stations_list_state.select(Some(amount_stations - 1));
-                                }
-                            }
-                        }
-                    }
-
-                }
-                KeyCode::Esc=>{
-                    active_context=Context::Change;
-                }
-                _ => {}
-            },
-
-            Event::Tick => {}
+        MenuItem::Standard(true)=>{
+            rect.render_widget(list_fav, stations_list_chunks[0]);
+            rect.render_stateful_widget(list_std, stations_list_chunks[1], &mut app.stations_list_state);
+        },
+        _=>{
+            rect.render_widget(list_fav, stations_list_chunks[0]);
+            rect.render_widget(list_std, stations_list_chunks[1]);
         }
     }
-    Ok(())
 
+    //add the detail, icons and footer
+    let detail_chunks = split_vertical_chunk(stations_chunks[1]);
+
+    let detail = station_detail(&app.stations_list_state, app.get_stations_list());
+    rect.render_widget(detail, detail_chunks[0]);
+
+    let icon = make_icon(&app.icon_list, &app.stations_list_state, app.get_stations_list(), detail_chunks[1].height);
+    rect.render_widget(icon, detail_chunks[1]);
+
+    let footer = footer(&app.music_title);
+    rect.render_widget(footer, chunks[2]);
 }
-
+/**
+Split a Rect into two Rect horizontally (20% - 80%)
+ */
+fn split_horizontal_chunk(chunk:Rect)->Vec<Rect>{
+    split_chunk(chunk,Direction::Horizontal)
+}
+/**
+Split a Rect into two Rect vertically (20% - 80%)
+ */
+fn split_vertical_chunk(chunk:Rect)->Vec<Rect>{
+    split_chunk(chunk,Direction::Vertical)
+}
+/**
+Split a Rect into two Rect in a given direction (20% - 80%)
+ */
+fn split_chunk(chunk:Rect,dir:Direction)->Vec<Rect>{
+    Layout::default()
+        .direction(dir)
+        .constraints(
+            [Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
+        )
+        .split(chunk)
+}
+/**
+Split a Rect into 3 pieces (Default Layout)
+ */
 fn base_chunk(size:Rect)->Vec<Rect>{
     Layout::default()
         .direction(Direction::Vertical)
@@ -345,7 +126,9 @@ fn base_chunk(size:Rect)->Vec<Rect>{
         )
         .split(size)
 }
-
+/**
+Paragraph displaying currently playing song
+ */
 fn footer(title: &String) ->Paragraph {
     Paragraph::new(title.as_str())
         .style(Style::default().fg(Color::Red))
@@ -353,66 +136,93 @@ fn footer(title: &String) ->Paragraph {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::White))
-                .title("Now Playing")
-                .border_type(BorderType::Plain),
+                .border_type(BorderType::Rounded)
+                .style(Style::default().fg(Color::Reset))
+                .title("Now Playing"),
         )
 }
-
-fn generate_status<'a>(status:&Vec<&'a str>) ->Vec<Spans<'a>>{
-    status
+/**
+Tab indicating the status of the player
+ */
+fn status_bar<'a>(status:&Vec<&'a str>) ->Tabs<'a>{
+    let status_vec = status
         .iter()
         .map(|t| {
             Spans::from(vec![
                 Span::styled(*t, Style::default()),
             ])
         })
-        .collect()
-}
+        .collect();
 
-fn status_bar(status:Vec<Spans>) ->Tabs{
-    Tabs::new(status)
-        .block(Block::default().title("Status").borders(Borders::ALL))
+    Tabs::new(status_vec)
+        .block(
+            Block::default().title("Status")
+            .border_type(BorderType::Rounded)
+            .borders(Borders::ALL)
+        )
         .style(Style::default())
         .divider(Span::raw("|"))
 }
-
-pub fn render_help<'a>() -> Paragraph<'a> {
+/**
+Paragraph for the help menu
+ */
+fn help_paragraph<'a>() -> Paragraph<'a> {
     let home = Paragraph::new(vec![
         Spans::from(vec![Span::styled(format!("{:50}{:40}", "Description", "Key"),Style::default().fg(Color::Red),)]),
         Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Go to Stations", "s"))]),
+        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Change station list", "<Esc>"))]),
         Spans::from(vec![Span::raw(format!("{:50}{:40}", "Go to Help", "h"))]),
         Spans::from(vec![Span::raw(format!("{:50}{:40}", "Move up", "<Up Arrow key>"))]),
         Spans::from(vec![Span::raw(format!("{:50}{:40}", "Move down", "<Down Arrow Key>"))]),
+        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Change station", "<Enter>"))]),
         Spans::from(vec![Span::raw(format!("{:50}{:40}", "Play/pause station", "<Space>"))]),
         Spans::from(vec![Span::raw(format!("{:50}{:40}", "Add/remove from favorite", "f"))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Change station list", "<Esc>"))]),
         Spans::from(vec![Span::raw(format!("{:50}{:40}", "Get current playing song", "n"))]),
         Spans::from(vec![Span::raw(format!("{:50}{:40}", "Get current playing song on the selected station", "N"))]),
+        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Quit program", "q"))]),
     ])
         .alignment(Alignment::Left)
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .style(Style::default())
-                .title("Help")
-                .border_type(BorderType::Plain),
+                .title("Help (<Esc> to quit)"),
         );
     home
 }
-
-
-pub fn render_stations_list<'a>(stations_list:&Vec<Station>,fav:bool) -> List<'a> {
-    let title = match fav {
-        true=>"Favorite",
-        false=>"Stations"
+/**
+She standard station list as a List with the correct style to be displayed
+ */
+fn make_std_stations_list<'a>(stations_list:&Vec<Station>,menu_item:&MenuItem)-> List<'a>{
+    let style = match menu_item{
+        MenuItem::Standard(_) => Style::default().fg(ACCENT_COLOR),
+        _ => Style::default(),
     };
+    make_stations_list(stations_list,"Stations",style)
+}
+/**
+She favorite station list as a List with the correct style to be displayed
+ */
+fn make_fav_stations_list<'a>(stations_list:&Vec<Station>,menu_item:&MenuItem)-> List<'a>{
+    let style = match menu_item{
+        MenuItem::Favorite(_) => Style::default().fg(ACCENT_COLOR),
+        _ => Style::default(),
+    };
+    make_stations_list(stations_list,"Favorites",style)
+}
+
+/**
+Generate the stations list based on the stations names
+ */
+fn make_stations_list<'a>(stations_list:&Vec<Station>, title:&'a str, style:Style) -> List<'a> {
+
     let stations = Block::default()
         .borders(Borders::ALL)
         .style(Style::default())
         .title(title)
-        .border_type(BorderType::Plain);
+        .border_type(BorderType::Rounded)
+        .border_style(style);
 
     let items: Vec<_> = stations_list
         .iter()
@@ -427,13 +237,15 @@ pub fn render_stations_list<'a>(stations_list:&Vec<Station>,fav:bool) -> List<'a
 
      List::new(items).block(stations).highlight_style(
         Style::default()
-            .bg(Color::Yellow)
+            .bg(ACCENT_COLOR)
             .fg(Color::Black)
             .add_modifier(Modifier::BOLD),
     )
 }
-
-fn render_icon<'a>(icon_list: &Value, stations_list_state: &ListState, stations_list:&Vec<Station>) -> Paragraph<'a> {
+/**
+Paragraph with the stations icon, size depends on available space
+ */
+fn make_icon<'a>(icon_list: &Value, stations_list_state: &ListState, stations_list:&Vec<Station>, mut size:u16) -> Paragraph<'a> {
     let selected_station = stations_list
         .get(
             stations_list_state
@@ -443,7 +255,13 @@ fn render_icon<'a>(icon_list: &Value, stations_list_state: &ListState, stations_
         .expect("exists")
         .clone();
 
-    let icon = match icon_list[selected_station.prefix+"_60"].as_str() {
+    if size >= 30 {
+        size = 60
+    } else { size = 30 }
+
+    let name = format!("{}_{}",&selected_station.prefix,size);
+
+    let icon = match icon_list[name].as_str() {
         None => "no_icon",
         Some(icon)=>icon
     };
@@ -452,11 +270,13 @@ fn render_icon<'a>(icon_list: &Value, stations_list_state: &ListState, stations_
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .style(Style::default())
-                .border_type(BorderType::Plain),
         )
 }
-
+/**
+Details about the stations as a Table
+ */
 fn station_detail<'a>(stations_list_state: &ListState, stations_list:&Vec<Station>)-> Table<'a>{
 
     let selected_station = stations_list
@@ -489,9 +309,9 @@ fn station_detail<'a>(stations_list_state: &ListState, stations_list:&Vec<Statio
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::White))
+                .style(Style::default())
                 .title("Detail")
-                .border_type(BorderType::Plain),
+                .border_type(BorderType::Rounded),
         )
         .widths(&[
             Constraint::Percentage(5),

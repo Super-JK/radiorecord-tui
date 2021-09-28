@@ -1,7 +1,7 @@
 use std::fs::File;
 
-use curl::easy::{Easy, WriteError};
-use std::io::{Write};
+use curl::easy::{Easy};
+use std::io::{BufWriter, Write};
 use std::thread;
 use std::time::Duration;
 use std::sync::{Arc};
@@ -14,7 +14,7 @@ use libmpv::{Mpv, FileState};
 macro_rules! play {
     ($_playing:ident) => {
         let mpv = Mpv::new().unwrap();
-        mpv.set_property("volume", 100).unwrap();
+        mpv.set_property("volume", 85).unwrap();
         mpv.set_property("vo", "null").unwrap();
         mpv.playlist_load_files(&[("/tmp/rrsound", FileState::AppendPlay, None)]).unwrap();
     }
@@ -65,18 +65,19 @@ impl Player{
         let playing = self.playing.clone();
         thread::spawn(move || {
             let mut easy = Easy::new();
-            let mut file = File::create("/tmp/rrsound").unwrap();
+            let mut file = BufWriter::new(File::create("/tmp/rrsound").unwrap());
             easy.url(url.as_str()).unwrap();
             easy.write_function(move |data| {
-                file.write_all(data).unwrap();
-                if playing.load(Ordering::Acquire) {
-                    Ok(data.len())
-                } else {
-                    Err(WriteError::Pause)
-                }
+                file.write(data).unwrap();
+                Ok(data.len())
             }).unwrap();
-            easy.perform().unwrap();
-
+            easy.progress_function(move |_, _, _, _| {
+                playing.load(Ordering::Acquire)
+            }).unwrap();
+            easy.progress(true).unwrap();
+            match easy.perform() {
+                _ => {}
+            }
         });
     }
     /**
