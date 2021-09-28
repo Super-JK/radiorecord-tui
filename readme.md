@@ -2,7 +2,7 @@
 
 A simple terminal interface for listening to radio record web stations written in Rust.\
 You can listen to all available record stations and mark some as favorite for ease.
-![ui](/https://gitlab.com/vandechat96/radiorecord-tui/-/raw/master/screenshots/ui.png)
+![ui](https://gitlab.com/vandechat96/radiorecord-tui/-/raw/master/screenshots/ui.png)
 Exact color depend on your terminal theme
 
 *This project is still in development and there is a lot of things to do*
