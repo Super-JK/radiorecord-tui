@@ -75,7 +75,7 @@ pub fn render_stations<B>(rect: &mut Frame<B>, app: &mut App) where B: Backend,
     }
 
     //add the detail, icons and footer
-    let detail_chunks = split_vertical_chunk(stations_chunks[1]);
+    let detail_chunks = split_detail_chunk(stations_chunks[1]);
 
     let detail = station_detail(&app.stations_list_state, app.get_stations_list());
     rect.render_widget(detail, detail_chunks[0]);
@@ -110,12 +110,25 @@ fn split_chunk(chunk:Rect,dir:Direction)->Vec<Rect>{
         .split(chunk)
 }
 /**
+Split a rect to maximize the size of icons
+*/
+fn split_detail_chunk(chunk:Rect) ->Vec<Rect> {
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Length(4),
+                Constraint::Min(2)
+            ].as_ref(),
+        )
+        .split(chunk)
+}
+/**
 Split a Rect into 3 pieces (Default Layout)
  */
 fn base_chunk(size:Rect)->Vec<Rect>{
     Layout::default()
         .direction(Direction::Vertical)
-        .margin(1)
         .constraints(
             [
                 Constraint::Length(3),

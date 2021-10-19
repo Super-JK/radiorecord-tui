@@ -73,15 +73,22 @@ pub fn radio_list()->Result<Vec<Station>,ApiError> {
 
 }
 /**
-Fetch a list the song and artist in the history of a station
+Fetch a list of the song and artist in the history of a station
 */
-pub fn now_playing(id:u16)->Result<Title,ApiError>{
+pub fn history(id:u16)->Result<Vec<Title>,ApiError>{
     let data = read(format!("https://www.radiorecord.ru/api/station/history/?id={}",id).as_str())?;
 
     let str_ = std::str::from_utf8(&data).unwrap();
     let json:ResHistory = serde_json::from_str(str_).unwrap();
 
-    Ok(json.result.history[0].clone())
+    Ok(json.result.history.clone())
+}
+
+/**
+Fetch the current playing song
+*/
+pub fn now_playing(id:u16)->Result<Title,ApiError>{
+    Ok(history(id)?[0].clone())
 }
 
 

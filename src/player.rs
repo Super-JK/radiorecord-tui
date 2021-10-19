@@ -13,10 +13,13 @@ use libmpv::{Mpv, FileState};
 #[cfg(feature = "libmpv_player")]
 macro_rules! play {
     ($_playing:ident) => {
+        let mut path = std::env::temp_dir();
+        path.push(TEMPFILE);
+
         let mpv = Mpv::new().unwrap();
         mpv.set_property("volume", 85).unwrap();
         mpv.set_property("vo", "null").unwrap();
-        mpv.playlist_load_files(&[("/tmp/rrsound", FileState::AppendPlay, None)]).unwrap();
+        mpv.playlist_load_files(&[(&path.to_str().unwrap(), FileState::AppendPlay, None)]).unwrap();
     }
 }
 
@@ -30,9 +33,11 @@ use {
 macro_rules! play {
     ($playing:ident) => {
         let (_stream, handle) = OutputStream::try_default().expect("no output found");
+        let mut path = std::env::temp_dir();
+        path.push(TEMPFILE);
 
         let source = loop {
-            match Decoder::new(BufReader::new(File::open("/tmp/rrsound").expect("file not found"))) {
+            match Decoder::new(BufReader::new(File::open(&path).expect("file not found"))) {
                 Ok(source) => break source,
                 Err(_) => {},
             };
@@ -45,6 +50,8 @@ macro_rules! play {
         let _res = handle.play_raw(source.convert_samples());
     }
 }
+
+const TEMPFILE: &str = "rrsound";
 
 pub struct Player {
     playing:Arc<AtomicBool>,
@@ -65,7 +72,9 @@ impl Player{
         let playing = self.playing.clone();
         thread::spawn(move || {
             let mut easy = Easy::new();
-            let mut file = BufWriter::new(File::create("/tmp/rrsound").unwrap());
+            let mut path = std::env::temp_dir();
+            path.push(TEMPFILE);
+            let mut file = BufWriter::new(File::create(&path).unwrap());
             easy.url(url.as_str()).unwrap();
             easy.write_function(move |data| {
                 file.write(data).unwrap();

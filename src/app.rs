@@ -125,6 +125,7 @@ impl App{
 
 
 pub fn start(&mut self) -> Result<(), Box<dyn std::error::Error>>{
+    println!("rrt is loading...");
 
     //prepare the terminal to be used
     enable_raw_mode().expect("can not run in raw mode");
