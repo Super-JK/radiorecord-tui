@@ -62,8 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
                     if let Some(station_found) = list.iter().find(|station| station.prefix == st) {
                         let mut player = player::Player::new();
                         player.play(station_found.stream_320.clone());
-                        loop {
-                        }
+                        pause()
                     } else {
                         panic!("Station not found")
                     }
@@ -77,4 +76,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
     } else {
         app::App::new().start()
     }
+}
+
+
+use std::io;
+use std::io::prelude::*;
+
+fn pause() {
+    let mut stdin = io::stdin();
+    let mut stdout = io::stdout();
+
+    // We want the cursor to stay at the end of the line, so we print without a newline and flush manually.
+    write!(stdout, "Press enter to exit...").unwrap();
+    stdout.flush().unwrap();
+
+    // Read a single byte and discard
+    let _ = stdin.read(&mut [0u8]).unwrap();
 }
