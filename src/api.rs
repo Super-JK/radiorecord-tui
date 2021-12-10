@@ -55,9 +55,21 @@ struct PartHistory {
 struct ResHistory{
     result : PartHistory,
 }
+
+#[derive(Serialize, Deserialize)]
+struct PartNowPlaying {
+    id:u16,
+    track:Title,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ResNowPlaying{
+    result : Vec<PartNowPlaying>,
+}
 #[derive(Debug)]
 pub enum ApiError {
     NoConnection,
+    ServerError
 }
 
 /**
@@ -79,7 +91,10 @@ pub fn history(id:u16)->Result<Vec<Title>,ApiError>{
     let data = read(format!("https://www.radiorecord.ru/api/station/history/?id={}",id).as_str())?;
 
     let str_ = std::str::from_utf8(&data).unwrap();
-    let json:ResHistory = serde_json::from_str(str_).unwrap();
+    let json:ResHistory = match serde_json::from_str::<ResHistory>(str_) {
+        Ok(res) => res,
+        Err(_) => return Err(ApiError::ServerError)
+    };
 
     Ok(json.result.history.clone())
 }
@@ -88,9 +103,27 @@ pub fn history(id:u16)->Result<Vec<Title>,ApiError>{
 Fetch the current playing song
 */
 pub fn now_playing(id:u16)->Result<Title,ApiError>{
-    Ok(history(id)?[0].clone())
-}
+    match history(id) {
+        Ok(vec) => Ok(vec[0].clone()),
+        Err(ApiError::ServerError) => now_playing_back(id),
+        Err(error) => Err(error)
+    }
 
+}
+/**
+Fetch the current playing song from a different endpoints if th other fail
+*/
+fn now_playing_back(id:u16)->Result<Title,ApiError>{
+    let data = read("https://www.radiorecord.ru/api/stations/now/")?;
+
+    let str_ = std::str::from_utf8(&data).unwrap();
+    let json:ResNowPlaying = serde_json::from_str(str_).unwrap();
+
+    let index = json.result.iter().position(|x| x.id == id).unwrap();
+
+
+    Ok(json.result[index].track.clone())
+}
 
 fn read(url:&str) -> Result<Vec<u8>,ApiError>{
     let mut data= Vec::new();
