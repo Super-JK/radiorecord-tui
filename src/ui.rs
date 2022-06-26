@@ -1,14 +1,12 @@
 use tui::{
-    layout::{
-        Alignment, Constraint, Direction, Layout, Rect
-    },
+    backend::Backend,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{
         Block, BorderType, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table, Tabs,
     },
     Frame,
-    backend::Backend
 };
 
 use serde_json::Value;
@@ -19,14 +17,14 @@ use crate::{
 };
 
 //const ACCENT_COLOR:Color = Color::Rgb(255,96,0);
-const ACCENT_COLOR:Color = Color::Yellow;
+const ACCENT_COLOR: Color = Color::Yellow;
 
 /**
 Display the help menu on the terminal
  */
 pub fn render_help<B>(rect: &mut Frame<B>, _app: &App)
-    where
-        B: Backend,
+where
+    B: Backend,
 {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -41,7 +39,9 @@ Display the main menu on the terminal
 
 It used corresponding function  to generate each part and split the terminal into different zones
  */
-pub fn render_stations<B>(rect: &mut Frame<B>, app: &mut App) where B: Backend,
+pub fn render_stations<B>(rect: &mut Frame<B>, app: &mut App)
+where
+    B: Backend,
 {
     //get base layout
     let chunks = base_chunk(rect.size());
@@ -55,20 +55,28 @@ pub fn render_stations<B>(rect: &mut Frame<B>, app: &mut App) where B: Backend,
     let stations_list_chunks = split_vertical_chunk(stations_chunks[0]);
 
     //generate the stations lists
-    let list_std = make_std_stations_list(&app.stations_list_std,  &app.active_menu_item);
+    let list_std = make_std_stations_list(&app.stations_list_std, &app.active_menu_item);
     let list_fav = make_fav_stations_list(&app.stations_list_fav, &app.active_menu_item);
 
     //add the stations list. Only the active list is navigable
     match app.active_menu_item {
-        MenuItem::Favorite(true)=>{
-            rect.render_stateful_widget(list_fav, stations_list_chunks[0], &mut app.stations_list_state);
+        MenuItem::Favorite(true) => {
+            rect.render_stateful_widget(
+                list_fav,
+                stations_list_chunks[0],
+                &mut app.stations_list_state,
+            );
             rect.render_widget(list_std, stations_list_chunks[1]);
-        },
-        MenuItem::Standard(true)=>{
+        }
+        MenuItem::Standard(true) => {
             rect.render_widget(list_fav, stations_list_chunks[0]);
-            rect.render_stateful_widget(list_std, stations_list_chunks[1], &mut app.stations_list_state);
-        },
-        _=>{
+            rect.render_stateful_widget(
+                list_std,
+                stations_list_chunks[1],
+                &mut app.stations_list_state,
+            );
+        }
+        _ => {
             rect.render_widget(list_fav, stations_list_chunks[0]);
             rect.render_widget(list_std, stations_list_chunks[1]);
         }
@@ -80,7 +88,12 @@ pub fn render_stations<B>(rect: &mut Frame<B>, app: &mut App) where B: Backend,
     let detail = station_detail(&app.stations_list_state, app.get_stations_list());
     rect.render_widget(detail, detail_chunks[0]);
 
-    let icon = make_icon(&app.icon_list, &app.stations_list_state, app.get_stations_list(), detail_chunks[1].height);
+    let icon = make_icon(
+        &app.icon_list,
+        &app.stations_list_state,
+        app.get_stations_list(),
+        detail_chunks[1].height,
+    );
     rect.render_widget(icon, detail_chunks[1]);
 
     let footer = footer(&app.music_title);
@@ -89,44 +102,37 @@ pub fn render_stations<B>(rect: &mut Frame<B>, app: &mut App) where B: Backend,
 /**
 Split a Rect into two Rect horizontally (20% - 80%)
  */
-fn split_horizontal_chunk(chunk:Rect)->Vec<Rect>{
-    split_chunk(chunk,Direction::Horizontal)
+fn split_horizontal_chunk(chunk: Rect) -> Vec<Rect> {
+    split_chunk(chunk, Direction::Horizontal)
 }
 /**
 Split a Rect into two Rect vertically (20% - 80%)
  */
-fn split_vertical_chunk(chunk:Rect)->Vec<Rect>{
-    split_chunk(chunk,Direction::Vertical)
+fn split_vertical_chunk(chunk: Rect) -> Vec<Rect> {
+    split_chunk(chunk, Direction::Vertical)
 }
 /**
 Split a Rect into two Rect in a given direction (20% - 80%)
  */
-fn split_chunk(chunk:Rect,dir:Direction)->Vec<Rect>{
+fn split_chunk(chunk: Rect, dir: Direction) -> Vec<Rect> {
     Layout::default()
         .direction(dir)
-        .constraints(
-            [Constraint::Percentage(20), Constraint::Percentage(80)].as_ref(),
-        )
+        .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
         .split(chunk)
 }
 /**
 Split a rect to maximize the size of icons
 */
-fn split_detail_chunk(chunk:Rect) ->Vec<Rect> {
+fn split_detail_chunk(chunk: Rect) -> Vec<Rect> {
     Layout::default()
         .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Length(4),
-                Constraint::Min(2)
-            ].as_ref(),
-        )
+        .constraints([Constraint::Length(4), Constraint::Min(2)].as_ref())
         .split(chunk)
 }
 /**
 Split a Rect into 3 pieces (Default Layout)
  */
-fn base_chunk(size:Rect)->Vec<Rect>{
+fn base_chunk(size: Rect) -> Vec<Rect> {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints(
@@ -135,15 +141,15 @@ fn base_chunk(size:Rect)->Vec<Rect>{
                 Constraint::Min(2),
                 Constraint::Length(3),
             ]
-                .as_ref(),
+            .as_ref(),
         )
         .split(size)
 }
 /**
 Paragraph displaying currently playing song
  */
-fn footer(title: &String) ->Paragraph {
-    Paragraph::new(title.as_str())
+fn footer(title: &str) -> Paragraph {
+    Paragraph::new(title)
         .style(Style::default().fg(Color::Red))
         .alignment(Alignment::Center)
         .block(
@@ -157,21 +163,18 @@ fn footer(title: &String) ->Paragraph {
 /**
 Tab indicating the status of the player
  */
-fn status_bar<'a>(status:&Vec<&'a str>) ->Tabs<'a>{
+fn status_bar<'a>(status: &[&'a str]) -> Tabs<'a> {
     let status_vec = status
         .iter()
-        .map(|t| {
-            Spans::from(vec![
-                Span::styled(*t, Style::default()),
-            ])
-        })
+        .map(|t| Spans::from(vec![Span::styled(*t, Style::default())]))
         .collect();
 
     Tabs::new(status_vec)
         .block(
-            Block::default().title("Status")
-            .border_type(BorderType::Rounded)
-            .borders(Borders::ALL)
+            Block::default()
+                .title("Status")
+                .border_type(BorderType::Rounded)
+                .borders(Borders::ALL),
         )
         .style(Style::default())
         .divider(Span::raw("|"))
@@ -181,55 +184,81 @@ Paragraph for the help menu
  */
 fn help_paragraph<'a>() -> Paragraph<'a> {
     let home = Paragraph::new(vec![
-        Spans::from(vec![Span::styled(format!("{:50}{:40}", "Description", "Key"),Style::default().fg(Color::Red),)]),
+        Spans::from(vec![Span::styled(
+            format!("{:50}{:40}", "Description", "Key"),
+            Style::default().fg(Color::Red),
+        )]),
         Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Change station list", "<Esc>"))]),
+        Spans::from(vec![Span::raw(format!(
+            "{:50}{:40}",
+            "Change station list", "<Esc>"
+        ))]),
         Spans::from(vec![Span::raw(format!("{:50}{:40}", "Go to Help", "h"))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Move up", "<Up Arrow key>"))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Move down", "<Down Arrow Key>"))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Change station", "<Enter>"))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Play/pause station", "<Space>"))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Add/remove from favorite", "f"))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Get current playing song", "n"))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Get current playing song on the selected station", "N"))]),
+        Spans::from(vec![Span::raw(format!(
+            "{:50}{:40}",
+            "Move up", "<Up Arrow key>"
+        ))]),
+        Spans::from(vec![Span::raw(format!(
+            "{:50}{:40}",
+            "Move down", "<Down Arrow Key>"
+        ))]),
+        Spans::from(vec![Span::raw(format!(
+            "{:50}{:40}",
+            "Change station", "<Enter>"
+        ))]),
+        Spans::from(vec![Span::raw(format!(
+            "{:50}{:40}",
+            "Play/pause station", "<Space>"
+        ))]),
+        Spans::from(vec![Span::raw(format!(
+            "{:50}{:40}",
+            "Add/remove from favorite", "f"
+        ))]),
+        Spans::from(vec![Span::raw(format!(
+            "{:50}{:40}",
+            "Get current playing song", "n"
+        ))]),
+        Spans::from(vec![Span::raw(format!(
+            "{:50}{:40}",
+            "Get current playing song on the selected station", "N"
+        ))]),
         Spans::from(vec![Span::raw(format!("{:50}{:40}", "Quit program", "q"))]),
     ])
-        .alignment(Alignment::Left)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .style(Style::default())
-                .title("Help (<Esc> to quit)"),
-        );
+    .alignment(Alignment::Left)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .style(Style::default())
+            .title("Help (<Esc> to quit)"),
+    );
     home
 }
 /**
 She standard station list as a List with the correct style to be displayed
  */
-fn make_std_stations_list<'a>(stations_list:&Vec<Station>,menu_item:&MenuItem)-> List<'a>{
-    let style = match menu_item{
+fn make_std_stations_list<'a>(stations_list: &[Station], menu_item: &MenuItem) -> List<'a> {
+    let style = match menu_item {
         MenuItem::Standard(_) => Style::default().fg(ACCENT_COLOR),
         _ => Style::default(),
     };
-    make_stations_list(stations_list,"Stations",style)
+    make_stations_list(stations_list, "Stations", style)
 }
 /**
 She favorite station list as a List with the correct style to be displayed
  */
-fn make_fav_stations_list<'a>(stations_list:&Vec<Station>,menu_item:&MenuItem)-> List<'a>{
-    let style = match menu_item{
+fn make_fav_stations_list<'a>(stations_list: &[Station], menu_item: &MenuItem) -> List<'a> {
+    let style = match menu_item {
         MenuItem::Favorite(_) => Style::default().fg(ACCENT_COLOR),
         _ => Style::default(),
     };
-    make_stations_list(stations_list,"Favorites",style)
+    make_stations_list(stations_list, "Favorites", style)
 }
 
 /**
 Generate the stations list based on the stations names
  */
-fn make_stations_list<'a>(stations_list:&Vec<Station>, title:&'a str, style:Style) -> List<'a> {
-
+fn make_stations_list<'a>(stations_list: &[Station], title: &'a str, style: Style) -> List<'a> {
     let stations = Block::default()
         .borders(Borders::ALL)
         .style(Style::default())
@@ -247,8 +276,7 @@ fn make_stations_list<'a>(stations_list:&Vec<Station>, title:&'a str, style:Styl
         })
         .collect();
 
-
-     List::new(items).block(stations).highlight_style(
+    List::new(items).block(stations).highlight_style(
         Style::default()
             .bg(ACCENT_COLOR)
             .fg(Color::Black)
@@ -258,7 +286,12 @@ fn make_stations_list<'a>(stations_list:&Vec<Station>, title:&'a str, style:Styl
 /**
 Paragraph with the stations icon, size depends on available space
  */
-fn make_icon<'a>(icon_list: &Value, stations_list_state: &ListState, stations_list:&Vec<Station>, mut size:u16) -> Paragraph<'a> {
+fn make_icon<'a>(
+    icon_list: &Value,
+    stations_list_state: &ListState,
+    stations_list: &[Station],
+    mut size: u16,
+) -> Paragraph<'a> {
     let selected_station = stations_list
         .get(
             stations_list_state
@@ -270,28 +303,29 @@ fn make_icon<'a>(icon_list: &Value, stations_list_state: &ListState, stations_li
 
     if size >= 30 {
         size = 60
-    } else { size = 30 }
+    } else {
+        size = 30
+    }
 
-    let name = format!("{}_{}",&selected_station.prefix,size);
+    let name = format!("{}_{}", &selected_station.prefix, size);
 
     let icon = match icon_list[name].as_str() {
         None => "no_icon",
-        Some(icon)=>icon
+        Some(icon) => icon,
     };
-    Paragraph::new(format!("{}",icon))
+    Paragraph::new(icon.to_string())
         .alignment(Alignment::Center)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .style(Style::default())
+                .style(Style::default()),
         )
 }
 /**
 Details about the stations as a Table
  */
-fn station_detail<'a>(stations_list_state: &ListState, stations_list:&Vec<Station>)-> Table<'a>{
-
+fn station_detail<'a>(stations_list_state: &ListState, stations_list: &[Station]) -> Table<'a> {
     let selected_station = stations_list
         .get(
             stations_list_state
@@ -305,33 +339,30 @@ fn station_detail<'a>(stations_list_state: &ListState, stations_list:&Vec<Statio
         Cell::from(Span::raw(selected_station.title)),
         Cell::from(Span::raw(selected_station.tooltip)),
     ])])
-        .header(Row::new(vec![
-            Cell::from(Span::styled(
-                "ID",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-            Cell::from(Span::styled(
-                "Title",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-            Cell::from(Span::styled(
-                "Description",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-        ]))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .style(Style::default())
-                .title("Detail")
-                .border_type(BorderType::Rounded),
-        )
-        .widths(&[
-            Constraint::Percentage(5),
-            Constraint::Percentage(15),
-            Constraint::Percentage(80),
-        ])
+    .header(Row::new(vec![
+        Cell::from(Span::styled(
+            "ID",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Cell::from(Span::styled(
+            "Title",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Cell::from(Span::styled(
+            "Description",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+    ]))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default())
+            .title("Detail")
+            .border_type(BorderType::Rounded),
+    )
+    .widths(&[
+        Constraint::Percentage(5),
+        Constraint::Percentage(15),
+        Constraint::Percentage(80),
+    ])
 }
-
-
-

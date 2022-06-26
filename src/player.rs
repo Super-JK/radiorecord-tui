@@ -1,14 +1,14 @@
 use std::fs::File;
 
-use curl::easy::{Easy};
+use curl::easy::Easy;
 use std::io::{BufWriter, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use std::sync::{Arc};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(feature = "libmpv_player")]
-use libmpv::{Mpv, FileState};
+use libmpv::{FileState, Mpv};
 
 #[cfg(feature = "libmpv_player")]
 macro_rules! play {
@@ -19,14 +19,15 @@ macro_rules! play {
         let mpv = Mpv::new().unwrap();
         mpv.set_property("volume", 85).unwrap();
         mpv.set_property("vo", "null").unwrap();
-        mpv.playlist_load_files(&[(&path.to_str().unwrap(), FileState::AppendPlay, None)]).unwrap();
-    }
+        mpv.playlist_load_files(&[(&path.to_str().unwrap(), FileState::AppendPlay, None)])
+            .unwrap();
+    };
 }
 
 #[cfg(feature = "rodio_player")]
 use {
-    std::io::{BufReader},
-    rodio::{Decoder, OutputStream, Source}
+    rodio::{Decoder, OutputStream, Source},
+    std::io::BufReader,
 };
 
 #[cfg(feature = "rodio_player")]
@@ -39,7 +40,7 @@ macro_rules! play {
         let source = loop {
             match Decoder::new(BufReader::new(File::open(&path).expect("file not found"))) {
                 Ok(source) => break source,
-                Err(_) => {},
+                Err(_) => {}
             };
             if !$playing.load(Ordering::Acquire) {
                 return;
@@ -48,27 +49,27 @@ macro_rules! play {
         };
 
         let _res = handle.play_raw(source.convert_samples());
-    }
+    };
 }
 
 const TEMPFILE: &str = "rrsound";
 
 pub struct Player {
-    playing:Arc<AtomicBool>,
+    playing: Arc<AtomicBool>,
 }
 /**
 Player used to control the station playback
  */
-impl Player{
+impl Player {
     pub fn new() -> Player {
-        Player{
+        Player {
             playing: Arc::new(AtomicBool::new(false)),
         }
     }
     /**
     Fetch and write the stream to a tempfile
     */
-    fn fetch(&self, url:String){
+    fn fetch(&self, url: String) {
         let playing = self.playing.clone();
         thread::spawn(move || {
             let mut easy = Easy::new();
@@ -77,26 +78,24 @@ impl Player{
             let mut file = BufWriter::new(File::create(&path).unwrap());
             easy.url(url.as_str()).unwrap();
             easy.write_function(move |data| {
-                file.write(data).unwrap();
+                file.write_all(data).unwrap();
                 Ok(data.len())
-            }).unwrap();
-            easy.progress_function(move |_, _, _, _| {
-                playing.load(Ordering::Acquire)
-            }).unwrap();
+            })
+            .unwrap();
+            easy.progress_function(move |_, _, _, _| playing.load(Ordering::Acquire))
+                .unwrap();
             easy.progress(true).unwrap();
-            match easy.perform() {
-                _ => {}
-            }
+            easy.perform() 
         });
     }
     /**
     Read and play the sound from the tempfile
     */
-    pub fn  play(&mut self, url:String){
+    pub fn play(&mut self, url: &str) {
         if !self.playing.load(Ordering::Acquire) {
             self.playing.store(true, Ordering::Release);
 
-            self.fetch(url);
+            self.fetch(url.to_string());
 
             let playing = self.playing.clone();
 
@@ -116,15 +115,13 @@ impl Player{
     /**
     Stop the player ( reading and writing)
      */
-    pub fn stop(&mut self){
-        self.playing.store(false,Ordering::Release)
+    pub fn stop(&mut self) {
+        self.playing.store(false, Ordering::Release)
     }
     /**
     Return if the player is playing
     */
-    pub fn is_playing(&self) -> bool{
+    pub fn is_playing(&self) -> bool {
         self.playing.load(Ordering::Acquire)
     }
 }
-
-

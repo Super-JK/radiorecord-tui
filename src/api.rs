@@ -1,6 +1,8 @@
+use std::fmt::{Display, Formatter};
+
 use curl::easy::Easy;
-use serde_json::Value;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 /**
 Represent a song (title and artist)
 */
@@ -10,17 +12,19 @@ pub struct Title {
     pub artist: String,
 }
 
-impl Title{
-    pub fn to_string(&self)->String{
-        format!("{} - {}",self.song,self.artist)
+
+impl Display for Title {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} - {}", self.song, self.artist)
     }
+
 }
 /**
 Represent a station with useful info
  */
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Station {
-    pub id: u16,
+    pub id: usize,
     pub title: String,
     pub prefix: String,
     pub tooltip: String,
@@ -37,110 +41,108 @@ impl Eq for Station {}
 
 #[derive(Serialize, Deserialize)]
 struct Part {
-    genre:Value,
-    stations:Vec<Station>,
+    genre: Value,
+    stations: Vec<Station>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct Res{
-    result : Part,
+struct Res {
+    result: Part,
 }
 
 #[derive(Serialize, Deserialize)]
 struct PartHistory {
-    history:Vec<Title>,
+    history: Vec<Title>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct ResHistory{
-    result : PartHistory,
+struct ResHistory {
+    result: PartHistory,
 }
 
 #[derive(Serialize, Deserialize)]
 struct PartNowPlaying {
-    id:u16,
-    track:Title,
+    id: usize,
+    track: Title,
 }
 
 #[derive(Serialize, Deserialize)]
-struct ResNowPlaying{
-    result : Vec<PartNowPlaying>,
+struct ResNowPlaying {
+    result: Vec<PartNowPlaying>,
 }
 #[derive(Debug)]
 pub enum ApiError {
     NoConnection,
-    ServerError
+    ServerError,
 }
 
 /**
 Fetch the list of stations and some information about them
  */
-pub fn radio_list()->Result<Vec<Station>,ApiError> {
-    let data= read("https://www.radiorecord.ru/api/stations/")?;
+pub fn radio_list() -> Result<Vec<Station>, ApiError> {
+    let data = read("https://www.radiorecord.ru/api/stations/")?;
 
     let str_ = std::str::from_utf8(&data).unwrap();
-    let json:Res = serde_json::from_str(str_).unwrap();
+    let json: Res = serde_json::from_str(str_).unwrap();
 
     Ok(json.result.stations)
-
 }
 /**
 Fetch a list of the song and artist in the history of a station
 */
-pub fn history(id:u16)->Result<Vec<Title>,ApiError>{
-    let data = read(format!("https://www.radiorecord.ru/api/station/history/?id={}",id).as_str())?;
+pub fn history(id: usize) -> Result<Vec<Title>, ApiError> {
+    let data = read(format!("https://www.radiorecord.ru/api/station/history/?id={}", id).as_str())?;
 
     let str_ = std::str::from_utf8(&data).unwrap();
-    let json:ResHistory = match serde_json::from_str::<ResHistory>(str_) {
+    let json: ResHistory = match serde_json::from_str::<ResHistory>(str_) {
         Ok(res) => res,
-        Err(_) => return Err(ApiError::ServerError)
+        Err(_) => return Err(ApiError::ServerError),
     };
 
-    Ok(json.result.history.clone())
+    Ok(json.result.history)
 }
 
 /**
 Fetch the current playing song
 */
-pub fn now_playing(id:u16)->Result<Title,ApiError>{
+pub fn now_playing(id: usize) -> Result<Title, ApiError> {
     match history(id) {
         Ok(vec) => Ok(vec[0].clone()),
         Err(ApiError::ServerError) => now_playing_back(id),
-        Err(error) => Err(error)
+        Err(error) => Err(error),
     }
-
 }
 /**
 Fetch the current playing song from a different endpoints if th other fail
 */
-fn now_playing_back(id:u16)->Result<Title,ApiError>{
+fn now_playing_back(id: usize) -> Result<Title, ApiError> {
     let data = read("https://www.radiorecord.ru/api/stations/now/")?;
 
     let str_ = std::str::from_utf8(&data).unwrap();
-    let json:ResNowPlaying = serde_json::from_str(str_).unwrap();
+    let json: ResNowPlaying = serde_json::from_str(str_).unwrap();
 
-    let index = json.result.iter().position(|x| x.id == id).unwrap();
+    let station = json.result.iter().nth(id).unwrap();
 
-
-    Ok(json.result[index].track.clone())
+    Ok(station.track.clone())
 }
 
-fn read(url:&str) -> Result<Vec<u8>,ApiError>{
-    let mut data= Vec::new();
+fn read(url: &str) -> Result<Vec<u8>, ApiError> {
+    let mut data = Vec::new();
     let mut handle = Easy::new();
     handle.url(url).unwrap();
     let res;
     {
         let mut transfer = handle.transfer();
-        transfer.write_function(|new_data| {
-            data.extend_from_slice(new_data);
-            Ok(new_data.len())
-        }).unwrap();
+        transfer
+            .write_function(|new_data| {
+                data.extend_from_slice(new_data);
+                Ok(new_data.len())
+            })
+            .unwrap();
         res = transfer.perform();
-
     }
-    match res{
-        Ok(_)=>Ok(data),
-        Err(_)=>Err(ApiError::NoConnection)
+    match res {
+        Ok(_) => Ok(data),
+        Err(_) => Err(ApiError::NoConnection),
     }
 }
