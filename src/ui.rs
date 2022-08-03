@@ -298,8 +298,7 @@ fn make_icon<'a>(
                 .selected()
                 .expect("there is always a selected station"),
         )
-        .expect("exists")
-        .clone();
+        .expect("exists");
 
     if size >= 30 {
         size = 60

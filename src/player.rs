@@ -61,8 +61,8 @@ pub struct Player {
 Player used to control the station playback
  */
 impl Player {
-    pub fn new() -> Player {
-        Player {
+    pub fn new() -> Self {
+        Self {
             playing: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -85,7 +85,7 @@ impl Player {
             easy.progress_function(move |_, _, _, _| playing.load(Ordering::Acquire))
                 .unwrap();
             easy.progress(true).unwrap();
-            easy.perform() 
+            easy.perform()
         });
     }
     /**
@@ -100,7 +100,7 @@ impl Player {
             let playing = self.playing.clone();
 
             thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(1500));
+                thread::sleep(Duration::from_millis(1500));
                 play!(playing);
 
                 loop {

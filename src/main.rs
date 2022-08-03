@@ -6,6 +6,8 @@ mod tools;
 mod ui;
 
 use clap::{Arg, Command};
+use rand::random;
+use crate::api::stations_list;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("Radio Record tui")
@@ -34,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .long("station")
                         .short('s')
                         .takes_value(true)
-                        .required(true),
+                        .required(false),
                 ),
         )
         .get_matches();
@@ -42,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(cmd) = matches.subcommand_name() {
         // Save, because we checked if the subcommand is present at runtime
         let m = matches.subcommand_matches(cmd).unwrap();
-        let list = api::radio_list().unwrap();
+        let list = stations_list().unwrap();
         match cmd {
             "list" => {
                 let mut s = String::new();
@@ -65,6 +67,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         panic!("Station not found")
                     }
+                } else {
+                    let mut player = player::Player::new();
+                    let random= random::<usize>()  % list.len();
+                    let station = &list[random];
+                    println!("Now playing : {}",station.title);
+                    player.play(&station.stream_320);
+                    pause()
                 }
             }
             &_ => {

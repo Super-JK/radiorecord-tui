@@ -12,12 +12,10 @@ pub struct Title {
     pub artist: String,
 }
 
-
 impl Display for Title {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} - {}", self.song, self.artist)
     }
-
 }
 /**
 Represent a station with useful info
@@ -79,7 +77,7 @@ pub enum ApiError {
 /**
 Fetch the list of stations and some information about them
  */
-pub fn radio_list() -> Result<Vec<Station>, ApiError> {
+pub fn stations_list() -> Result<Vec<Station>, ApiError> {
     let data = read("https://www.radiorecord.ru/api/stations/")?;
 
     let str_ = std::str::from_utf8(&data).unwrap();
@@ -107,7 +105,7 @@ Fetch the current playing song
 */
 pub fn now_playing(id: usize) -> Result<Title, ApiError> {
     match history(id) {
-        Ok(vec) => Ok(vec[0].clone()),
+        Ok(mut vec) => Ok(vec.remove(1)),
         Err(ApiError::ServerError) => now_playing_back(id),
         Err(error) => Err(error),
     }
@@ -121,9 +119,9 @@ fn now_playing_back(id: usize) -> Result<Title, ApiError> {
     let str_ = std::str::from_utf8(&data).unwrap();
     let json: ResNowPlaying = serde_json::from_str(str_).unwrap();
 
-    let station = json.result.iter().nth(id).unwrap();
+    let station = json.result.into_iter().nth(id).unwrap();
 
-    Ok(station.track.clone())
+    Ok(station.track)
 }
 
 fn read(url: &str) -> Result<Vec<u8>, ApiError> {

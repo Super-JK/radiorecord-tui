@@ -13,7 +13,7 @@ Download all stations icons to a file int the tmp folder
  */
 pub fn get_all_icons() {
     //get all stations
-    let list = api::radio_list().unwrap();
+    let list = api::stations_list().unwrap();
 
     let mut path = std::env::temp_dir();
     path.push(TEMPDIR);
@@ -43,7 +43,7 @@ Convert the icons previously downloaded to ascii art and write it to a file
  */
 pub fn to_ascii() {
     //get stations list
-    let list = api::radio_list().unwrap();
+    let list = api::stations_list().unwrap();
     //create save file
     let mut path = get_app_config_path().unwrap();
     path.push("ascii.json");

@@ -2,14 +2,15 @@ use tui::{backend::CrosstermBackend, widgets::ListState, Terminal};
 
 use crossterm::{
     event::{self, Event as CEvent, KeyCode, KeyEvent},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}, ExecutableCommand,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
 };
 use serde_json::Value;
 
 use crate::config::{read_favorite, read_icons, toggle_to_favorite};
 use crate::ui::{render_help, render_stations};
 use crate::{
-    api::{now_playing, radio_list, Station},
+    api::{now_playing, stations_list, Station},
     player::Player,
 };
 use std::{
@@ -19,6 +20,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use rand::random;
 
 pub enum Event<I> {
     Input(I),
@@ -53,7 +55,7 @@ pub struct App {
 impl App {
     pub fn new() -> App {
         //try to get the stations list. Exit the program if impossible
-        let stations_list_std = match radio_list() {
+        let stations_list_std = match stations_list() {
             Ok(list) => list,
             Err(_) => {
                 eprintln!("No connection available !");
@@ -67,7 +69,7 @@ impl App {
 
         let stations_list_fav = match read_favorite() {
             Ok(list) => {
-                if !list.is_empty() {                    
+                if !list.is_empty() {
                     stations_list = list.clone();
                     active_menu_item = MenuItem::Favorite(true)
                 }
@@ -149,6 +151,9 @@ impl App {
                             self.stations_list_fav =
                                 toggle_to_favorite(self.stations_list[selected].clone())
                                     .expect("can add to fav");
+                            if self.stations_list_fav.is_empty() {
+                                self.active_menu_item = MenuItem::Standard(true)
+                            }
                         }
                     }
                     KeyCode::Char('n') => {
@@ -163,6 +168,18 @@ impl App {
                             self.music_title = now_playing(id).unwrap().to_string();
                         };
                     }
+                    KeyCode::Char('r') => {
+                        self.player.stop();
+                        thread::sleep(Duration::from_millis(200));
+                        let random= random::<usize>()  % self.stations_list.len();
+
+                        self.playing_station = self.stations_list[random].clone();
+                        self.stations_list_state.select(Some(random));
+
+                        let url = &self.playing_station.stream_320;
+                        self.player.play(url);
+
+                    },
                     KeyCode::Char(' ') => self.toggle_playing(),
                     KeyCode::Enter => {
                         if let Some(selected) = self.stations_list_state.selected() {
@@ -175,8 +192,8 @@ impl App {
 
                                 thread::sleep(Duration::from_millis(200));
 
-                                let url = self.playing_station.clone().stream_320;
-                                self.player.play(&url);
+                                let url = &self.playing_station.stream_320;
+                                self.player.play(url);
                             } else {
                                 self.toggle_playing()
                             }
@@ -248,8 +265,8 @@ impl App {
         if playing {
             self.player.stop()
         } else {
-            let url = self.playing_station.clone().stream_320;
-            self.player.play(&url);
+            let url = &self.playing_station.stream_320;
+            self.player.play(url);
         }
     }
 }
@@ -274,7 +291,7 @@ fn event_sender(tx: Sender<Event<KeyEvent>>) {
             }
 
             if last_tick.elapsed() >= tick_rate && tx.send(Event::Tick).is_ok() {
-                    last_tick = Instant::now();
+                last_tick = Instant::now();
             }
         }
     });
