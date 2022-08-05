@@ -74,7 +74,7 @@ impl Player {
     Fetch and write the stream to a tempfile
     */
     fn fetch(&self, url: String) {
-        let playing = self.playing.clone();
+        let playing = self.current.clone();
         thread::spawn(move || {
             let mut easy = Easy::new();
             let mut path = std::env::temp_dir();
@@ -133,7 +133,7 @@ impl Player {
     pub fn force_play(&mut self, url: &str) -> bool {
         if self.is_playing() {
             self.stop();
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(200));
             self.play(url)
         } else {
             self.play(url)
@@ -160,12 +160,10 @@ impl Player {
                 play!(playing);
 
                 loop {
-                    if current
-                        .compare_exchange(false, true, Ordering::Release, Ordering::Relaxed)
-                        .is_ok()
-                    {
-                        thread::sleep(Duration::from_millis(50));
+                    if !current.load(Ordering::Acquire) {
                         playing.store(false, Ordering::Release);
+                        thread::sleep(Duration::from_millis(100));
+                        current.store(true, Ordering::Release);
                         break;
                     }
                     thread::sleep(Duration::from_millis(100));
