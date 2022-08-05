@@ -18,17 +18,17 @@ pub enum Error {
 /**
 Add or delete a favorite from the favorite file
  */
-pub fn toggle_to_favorite(station: Station) -> Result<Vec<Station>, Error> {
+pub fn toggle_to_favorite(station: &Station) -> Result<Vec<Station>, Error> {
     let mut path = get_app_config_path()?;
     path.push("favorite.json");
 
     let mut parsed: Vec<Station> = read_favorite()?;
 
-    if !parsed.contains(&station) {
-        parsed.push(station);
+    if !parsed.contains(station) {
+        parsed.push(station.clone());
         fs::write(path, &serde_json::to_vec(&parsed)?)?;
     } else {
-        let index = parsed.iter().position(|x| *x == station).unwrap();
+        let index = parsed.iter().position(|x| x == station).unwrap();
         parsed.remove(index);
         fs::write(path, &serde_json::to_vec(&parsed)?)?;
     }

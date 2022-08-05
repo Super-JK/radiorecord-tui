@@ -3,14 +3,12 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{
-        Block, BorderType, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table, Tabs,
-    },
+    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph},
     Frame,
 };
 
 use serde_json::Value;
-
+use crate::app::Status;
 use crate::{
     api::Station,
     app::{App, MenuItem},
@@ -47,7 +45,7 @@ where
     let chunks = base_chunk(rect.size());
 
     //add the status bar
-    let bar = status_bar(&app.get_status());
+    let bar = info_bar(&app.get_selected_station().unwrap());
     rect.render_widget(bar, chunks[0]);
 
     //split the rect
@@ -82,21 +80,16 @@ where
         }
     }
 
-    //add the detail, icons and footer
-    let detail_chunks = split_detail_chunk(stations_chunks[1]);
-
-    let detail = station_detail(&app.stations_list_state, app.get_stations_list());
-    rect.render_widget(detail, detail_chunks[0]);
+    //add the icons and footer
 
     let icon = make_icon(
         &app.icon_list,
-        &app.stations_list_state,
-        app.get_stations_list(),
-        detail_chunks[1].height,
+        &app.get_selected_station().unwrap(),
+        stations_chunks[1].height,
     );
-    rect.render_widget(icon, detail_chunks[1]);
+    rect.render_widget(icon, stations_chunks[1]);
 
-    let footer = footer(&app.music_title);
+    let footer = status_bar(app.get_status(), &app.music_title);
     rect.render_widget(footer, chunks[2]);
 }
 /**
@@ -121,15 +114,6 @@ fn split_chunk(chunk: Rect, dir: Direction) -> Vec<Rect> {
         .split(chunk)
 }
 /**
-Split a rect to maximize the size of icons
-*/
-fn split_detail_chunk(chunk: Rect) -> Vec<Rect> {
-    Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(4), Constraint::Min(2)].as_ref())
-        .split(chunk)
-}
-/**
 Split a Rect into 3 pieces (Default Layout)
  */
 fn base_chunk(size: Rect) -> Vec<Rect> {
@@ -148,36 +132,36 @@ fn base_chunk(size: Rect) -> Vec<Rect> {
 /**
 Paragraph displaying currently playing song
  */
-fn footer(title: &str) -> Paragraph {
+fn status_bar(status: Status, title: &str) -> Paragraph {
     Paragraph::new(title)
-        .style(Style::default().fg(Color::Red))
+        .style(
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::RAPID_BLINK),
+        )
         .alignment(Alignment::Center)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .style(Style::default().fg(Color::Reset))
-                .title("Now Playing"),
+                .title(status.to_string()),
         )
 }
 /**
-Tab indicating the status of the player
+Paragraph displaying informations about current station
  */
-fn status_bar<'a>(status: &[&'a str]) -> Tabs<'a> {
-    let status_vec = status
-        .iter()
-        .map(|t| Spans::from(vec![Span::styled(*t, Style::default())]))
-        .collect();
-
-    Tabs::new(status_vec)
+fn info_bar<'a>(station: &Station) -> Paragraph<'a> {
+    Paragraph::new(station.tooltip.to_string())
+        .style(Style::default())
+        .alignment(Alignment::Center)
         .block(
             Block::default()
-                .title("Status")
+                .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .borders(Borders::ALL),
+                .style(Style::default())
+                .title(station.title.to_string()),
         )
-        .style(Style::default())
-        .divider(Span::raw("|"))
 }
 /**
 Paragraph for the help menu
@@ -286,20 +270,7 @@ fn make_stations_list<'a>(stations_list: &[Station], title: &'a str, style: Styl
 /**
 Paragraph with the stations icon, size depends on available space
  */
-fn make_icon<'a>(
-    icon_list: &Value,
-    stations_list_state: &ListState,
-    stations_list: &[Station],
-    mut size: u16,
-) -> Paragraph<'a> {
-    let selected_station = stations_list
-        .get(
-            stations_list_state
-                .selected()
-                .expect("there is always a selected station"),
-        )
-        .expect("exists");
-
+fn make_icon<'a>(icon_list: &Value, selected_station: &Station, mut size: u16) -> Paragraph<'a> {
     if size >= 30 {
         size = 60
     } else {
@@ -320,48 +291,4 @@ fn make_icon<'a>(
                 .border_type(BorderType::Rounded)
                 .style(Style::default()),
         )
-}
-/**
-Details about the stations as a Table
- */
-fn station_detail<'a>(stations_list_state: &ListState, stations_list: &[Station]) -> Table<'a> {
-    let selected_station = stations_list
-        .get(
-            stations_list_state
-                .selected()
-                .expect("there is always a selected station"),
-        )
-        .expect("exists")
-        .clone();
-    Table::new(vec![Row::new(vec![
-        Cell::from(Span::raw(selected_station.id.to_string())),
-        Cell::from(Span::raw(selected_station.title)),
-        Cell::from(Span::raw(selected_station.tooltip)),
-    ])])
-    .header(Row::new(vec![
-        Cell::from(Span::styled(
-            "ID",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Cell::from(Span::styled(
-            "Title",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-        Cell::from(Span::styled(
-            "Description",
-            Style::default().add_modifier(Modifier::BOLD),
-        )),
-    ]))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .style(Style::default())
-            .title("Detail")
-            .border_type(BorderType::Rounded),
-    )
-    .widths(&[
-        Constraint::Percentage(5),
-        Constraint::Percentage(15),
-        Constraint::Percentage(80),
-    ])
 }

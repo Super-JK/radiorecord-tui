@@ -56,6 +56,8 @@ const TEMPFILE: &str = "rrsound";
 
 pub struct Player {
     playing: Arc<AtomicBool>,
+    url: Option<String>,
+    current: Arc<AtomicBool>,
 }
 /**
 Player used to control the station playback
@@ -64,6 +66,8 @@ impl Player {
     pub fn new() -> Self {
         Self {
             playing: Arc::new(AtomicBool::new(false)),
+            current: Arc::new(AtomicBool::new(true)),
+            url: None,
         }
     }
     /**
@@ -88,40 +92,87 @@ impl Player {
             easy.perform()
         });
     }
+
+    pub fn is_first_run(&self) -> bool {
+        self.url.is_none()
+    }
+
+    pub fn resume(&mut self) {
+        if !self.is_playing() {
+            if let Some(url) = &self.url {
+                self.play(&url.clone());
+            }
+        }
+    }
+
+    pub fn toggle_play(&mut self) {
+        if self.is_playing() {
+            self.stop();
+        } else if let Some(url) = &self.url {
+            self.play(&url.clone());
+        }
+    }
+
+    /**
+    Stop the player ( reading and writing)
+     */
+    pub fn stop(&mut self) {
+        self.current.store(false, Ordering::Release);
+    }
+
+    /**
+    Return if the player is playing
+     */
+    pub fn is_playing(&self) -> bool {
+        self.playing.load(Ordering::Acquire)
+    }
+
+    /**
+    Force play the url even if player is not paused
+    **/
+    pub fn force_play(&mut self, url: &str) -> bool {
+        if self.is_playing() {
+            self.stop();
+            thread::sleep(Duration::from_millis(100));
+            self.play(url)
+        } else {
+            self.play(url)
+        }
+    }
+
     /**
     Read and play the sound from the tempfile
     */
-    pub fn play(&mut self, url: &str) {
-        if !self.playing.load(Ordering::Acquire) {
-            self.playing.store(true, Ordering::Release);
-
+    pub fn play(&mut self, url: &str) -> bool {
+        if self
+            .playing
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            self.url = Some(url.to_string());
             self.fetch(url.to_string());
 
             let playing = self.playing.clone();
+            let current = self.current.clone();
 
             thread::spawn(move || {
                 thread::sleep(Duration::from_millis(1500));
                 play!(playing);
 
                 loop {
-                    if !playing.load(Ordering::Acquire) {
+                    if current
+                        .compare_exchange(false, true, Ordering::Release, Ordering::Relaxed)
+                        .is_ok()
+                    {
+                        thread::sleep(Duration::from_millis(50));
+                        playing.store(false, Ordering::Release);
                         break;
                     }
                     thread::sleep(Duration::from_millis(100));
                 }
             });
+            return true;
         }
-    }
-    /**
-    Stop the player ( reading and writing)
-     */
-    pub fn stop(&mut self) {
-        self.playing.store(false, Ordering::Release)
-    }
-    /**
-    Return if the player is playing
-    */
-    pub fn is_playing(&self) -> bool {
-        self.playing.load(Ordering::Acquire)
+        false
     }
 }

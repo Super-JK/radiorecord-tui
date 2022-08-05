@@ -124,6 +124,9 @@ fn now_playing_back(id: usize) -> Result<Title, ApiError> {
     Ok(station.track)
 }
 
+/**
+Read from url
+**/
 fn read(url: &str) -> Result<Vec<u8>, ApiError> {
     let mut data = Vec::new();
     let mut handle = Easy::new();

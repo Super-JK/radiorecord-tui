@@ -8,19 +8,22 @@ use crossterm::{
 use serde_json::Value;
 
 use crate::config::{read_favorite, read_icons, toggle_to_favorite};
+use crate::mpris::{launch_mpris_server, Command};
 use crate::ui::{render_help, render_stations};
 use crate::{
     api::{now_playing, stations_list, Station},
     player::Player,
 };
+use crossbeam::channel;
+use crossbeam::channel::Sender;
+use rand::random;
+use std::fmt::{Display, Formatter};
 use std::{
     io,
     process::exit,
-    sync::mpsc::{self, Sender},
     thread,
     time::{Duration, Instant},
 };
-use rand::random;
 
 pub enum Event<I> {
     Input(I),
@@ -39,10 +42,25 @@ pub enum MenuItem {
     Standard(bool),
 }
 
+pub const TICK_RATE: Duration = Duration::from_millis(200);
+
+pub struct Status {
+    pub station: Station,
+    pub playing: bool,
+}
+
+impl Display for Status {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let np = match self.playing {
+            true => "Now playing",
+            false => "Paused",
+        };
+        write!(f, "{} : {} ", np, self.station.title)
+    }
+}
 pub struct App {
     pub stations_list_std: Vec<Station>,
     pub stations_list_fav: Vec<Station>,
-    pub stations_list: Vec<Station>,
     player: Player,
     pub icon_list: Value,
     active_context: Context,
@@ -53,7 +71,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> App {
+    pub fn new() -> Self {
         //try to get the stations list. Exit the program if impossible
         let stations_list_std = match stations_list() {
             Ok(list) => list,
@@ -64,13 +82,11 @@ impl App {
         };
 
         //Use standard stations list by default and try to fetch favorite list. If it exist, it will be used as default
-        let mut stations_list = stations_list_std.clone();
         let mut active_menu_item = MenuItem::Standard(true);
 
         let stations_list_fav = match read_favorite() {
             Ok(list) => {
                 if !list.is_empty() {
-                    stations_list = list.clone();
                     active_menu_item = MenuItem::Favorite(true)
                 }
                 list
@@ -81,12 +97,15 @@ impl App {
         //initiate the active list
         let mut stations_list_state = ListState::default();
         stations_list_state.select(Some(0));
-        let playing_station = stations_list[0].clone();
+        let playing_station = match active_menu_item {
+            MenuItem::Favorite(_) => &stations_list_fav,
+            MenuItem::Standard(_) => &stations_list_std,
+        }[0]
+        .clone();
 
         App {
             stations_list_std,
             stations_list_fav,
-            stations_list,
             player: Player::new(),
             icon_list: read_icons().expect("could not retrieve icons"),
             active_context: Context::Stations,
@@ -104,16 +123,44 @@ impl App {
         }
     }
 
-    pub fn get_status(&self) -> Vec<&str> {
-        let playing = match self.player.is_playing() {
-            true => "Playing",
-            false => "Paused",
-        };
-
-        vec![self.playing_station.title.as_str(), playing]
+    pub fn get_status(&self) -> Status {
+        Status {
+            station: self.playing_station.clone(),
+            playing: self.player.is_playing(),
+        }
     }
 
-    pub fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn get_selected_station(&self) -> Option<Station> {
+        self.stations_list_state
+            .selected()
+            .map(|selected| self.get_stations_list()[selected].clone())
+    }
+
+    fn next(&mut self) {
+        if let Some(selected) = self.stations_list_state.selected() {
+            let amount_stations = self.get_stations_list().len();
+
+            if selected >= amount_stations - 1 {
+                self.stations_list_state.select(Some(0));
+            } else {
+                self.stations_list_state.select(Some(selected + 1));
+            }
+        }
+    }
+
+    fn previous(&mut self) {
+        if let Some(selected) = self.stations_list_state.selected() {
+            let amount_stations = self.get_stations_list().len();
+
+            if selected > 0 {
+                self.stations_list_state.select(Some(selected - 1));
+            } else {
+                self.stations_list_state.select(Some(amount_stations - 1));
+            }
+        }
+    }
+
+    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("rrt is loading...");
 
         //prepare the terminal to be used
@@ -125,8 +172,12 @@ impl App {
         terminal.clear()?;
 
         //setup event emitter and receiver
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = channel::bounded(1);
         event_sender(tx);
+
+        let (txm, rxm) = channel::bounded(1);
+
+        launch_mpris_server(txm).await?;
 
         loop {
             //draw the corresponding context each tick
@@ -134,6 +185,29 @@ impl App {
                 Context::Help => render_help(rect, self),
                 Context::Stations => render_stations(rect, self),
             })?;
+
+            // handle mpris commands if any
+            if !rxm.is_empty() {
+                match rxm.recv()? {
+                    Command::PlayPause => self.toggle_playing(),
+                    Command::Pause => self.player.stop(),
+                    Command::Play => self.player.resume(),
+                    Command::Next => {
+                        self.next();
+                        let station = self.get_selected_station().unwrap();
+                        if self.player.force_play(&station.stream_320) {
+                            self.playing_station = station;
+                        }
+                    }
+                    Command::Previous => {
+                        self.previous();
+                        let station = self.get_selected_station().unwrap();
+                        if self.player.force_play(&station.stream_320) {
+                            self.playing_station = station;
+                        }
+                    }
+                }
+            }
 
             //wait for a tick or keyPress before continuing
             match rx.recv()? {
@@ -147,53 +221,51 @@ impl App {
                     }
                     KeyCode::Char('h') | KeyCode::Char('?') => self.active_context = Context::Help,
                     KeyCode::Char('f') => {
-                        if let Some(selected) = self.stations_list_state.selected() {
+                        if let Some(selected_station) = self.get_selected_station() {
                             self.stations_list_fav =
-                                toggle_to_favorite(self.stations_list[selected].clone())
-                                    .expect("can add to fav");
+                                toggle_to_favorite(&selected_station).expect("can add to fav");
+
+                            if let Some(selected) = self.stations_list_state.selected() {
+                                if selected == self.get_stations_list().len() {
+                                    self.stations_list_state.select(Some(selected - 1))
+                                }
+                            }
                             if self.stations_list_fav.is_empty() {
                                 self.active_menu_item = MenuItem::Standard(true)
                             }
                         }
                     }
                     KeyCode::Char('n') => {
-                        if self.player.is_playing() {
-                            self.music_title =
-                                now_playing(self.playing_station.id).unwrap().to_string();
-                        }
+                        self.music_title =
+                            now_playing(self.playing_station.id).unwrap().to_string();
                     }
                     KeyCode::Char('N') => {
-                        if let Some(selected) = self.stations_list_state.selected() {
-                            let id = self.stations_list[selected].id;
+                        if let Some(selected_station) = self.get_selected_station() {
+                            let id = selected_station.id;
                             self.music_title = now_playing(id).unwrap().to_string();
-                        };
+                        }
                     }
                     KeyCode::Char('r') => {
-                        self.player.stop();
-                        thread::sleep(Duration::from_millis(200));
-                        let random= random::<usize>()  % self.stations_list.len();
+                        let random = random::<usize>() % self.get_stations_list().len();
 
-                        self.playing_station = self.stations_list[random].clone();
-                        self.stations_list_state.select(Some(random));
+                        let temp = self.get_stations_list()[random].clone();
+                        let url = &temp.stream_320;
 
-                        let url = &self.playing_station.stream_320;
-                        self.player.play(url);
-
-                    },
+                        if self.player.force_play(url) {
+                            self.playing_station = self.get_stations_list()[random].clone();
+                            self.stations_list_state.select(Some(random));
+                        }
+                    }
                     KeyCode::Char(' ') => self.toggle_playing(),
                     KeyCode::Enter => {
-                        if let Some(selected) = self.stations_list_state.selected() {
-                            let same = self.playing_station == self.stations_list[selected];
+                        if let Some(selected_station) = self.get_selected_station() {
+                            let same = self.playing_station == selected_station;
 
                             if !same {
-                                self.playing_station = self.stations_list[selected].clone();
-
-                                self.player.stop();
-
-                                thread::sleep(Duration::from_millis(200));
-
-                                let url = &self.playing_station.stream_320;
-                                self.player.play(url);
+                                let url = &selected_station.stream_320;
+                                if self.player.force_play(url) {
+                                    self.playing_station = selected_station.clone();
+                                }
                             } else {
                                 self.toggle_playing()
                             }
@@ -201,42 +273,20 @@ impl App {
                     }
                     KeyCode::Down => match self.active_menu_item {
                         MenuItem::Favorite(true) | MenuItem::Standard(true) => {
-                            if let Some(selected) = self.stations_list_state.selected() {
-                                let amount_stations = match self.active_menu_item {
-                                    MenuItem::Favorite(true) => self.stations_list_fav.len(),
-                                    _ => self.stations_list_std.len(),
-                                };
-                                if selected >= amount_stations - 1 {
-                                    self.stations_list_state.select(Some(0));
-                                } else {
-                                    self.stations_list_state.select(Some(selected + 1));
-                                }
-                            }
+                            self.next();
                         }
                         _ => {
                             self.active_menu_item = MenuItem::Standard(true);
-                            self.stations_list = self.stations_list_std.clone();
                             self.stations_list_state.select(Some(0));
                         }
                     },
                     KeyCode::Up => match self.active_menu_item {
                         MenuItem::Favorite(true) | MenuItem::Standard(true) => {
-                            if let Some(selected) = self.stations_list_state.selected() {
-                                let amount_stations = match self.active_menu_item {
-                                    MenuItem::Favorite(true) => self.stations_list_fav.len(),
-                                    _ => self.stations_list_std.len(),
-                                };
-                                if selected > 0 {
-                                    self.stations_list_state.select(Some(selected - 1));
-                                } else {
-                                    self.stations_list_state.select(Some(amount_stations - 1));
-                                }
-                            }
+                            self.previous();
                         }
                         _ => {
                             if !self.stations_list_fav.is_empty() {
                                 self.active_menu_item = MenuItem::Favorite(true);
-                                self.stations_list = self.stations_list_fav.clone();
                                 self.stations_list_state.select(Some(0));
                             };
                         }
@@ -261,12 +311,10 @@ impl App {
     }
     //start or stop the current radio
     fn toggle_playing(&mut self) {
-        let playing = self.player.is_playing();
-        if playing {
-            self.player.stop()
+        if self.player.is_first_run() {
+            self.player.play(&self.playing_station.stream_320);
         } else {
-            let url = &self.playing_station.stream_320;
-            self.player.play(url);
+            self.player.toggle_play()
         }
     }
 }
@@ -275,12 +323,10 @@ impl App {
 Capture and resend key press as well as sending tick for refresh
  */
 fn event_sender(tx: Sender<Event<KeyEvent>>) {
-    let tick_rate = Duration::from_millis(200);
-
     thread::spawn(move || {
         let mut last_tick = Instant::now();
         loop {
-            let timeout = tick_rate
+            let timeout = TICK_RATE
                 .checked_sub(last_tick.elapsed())
                 .unwrap_or_else(|| Duration::from_secs(0));
 
@@ -290,7 +336,7 @@ fn event_sender(tx: Sender<Event<KeyEvent>>) {
                 }
             }
 
-            if last_tick.elapsed() >= tick_rate && tx.send(Event::Tick).is_ok() {
+            if last_tick.elapsed() >= TICK_RATE && tx.send(Event::Tick).is_ok() {
                 last_tick = Instant::now();
             }
         }

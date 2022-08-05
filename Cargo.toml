@@ -37,6 +37,10 @@ serde_json = "1.0"
 dirs-next = "2.0.0"
 asciifyer = { version = "0.1.1" }
 
+tokio = { version = "1", features = ["full"] }
+zbus = { version = "2", default-features = false, features = ["tokio"] }
+crossbeam = "0.8"
+
 [features]
 default = ["libmpv_player"]
 libmpv_player = []
