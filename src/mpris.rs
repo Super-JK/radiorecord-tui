@@ -6,7 +6,7 @@ use zbus::{dbus_interface, ConnectionBuilder};
 pub enum Command {
     PlayPause,
     Play,
-    Pause,
+    Stop,
     Next,
     Previous,
 }
@@ -57,8 +57,8 @@ impl MediaPlayerInterface {
     fn Play(&mut self) {
         self.tx.send(Command::Play).expect("Could not send")
     }
-    fn Pause(&mut self) {
-        self.tx.send(Command::Pause).expect("Could not send");
+    fn Stop(&mut self) {
+        self.tx.send(Command::Stop).expect("Could not send");
     }
     fn PlayPause(&mut self) {
         self.tx.send(Command::PlayPause).expect("Could not send");

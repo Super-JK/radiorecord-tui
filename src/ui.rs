@@ -2,17 +2,19 @@ use tui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
+    symbols,
     text::{Span, Spans},
     widgets::{Block, BorderType, Borders, List, ListItem, Paragraph},
     Frame,
 };
 
-use serde_json::Value;
 use crate::app::Status;
+use crate::tools::StationsArtList;
 use crate::{
     api::Station,
     app::{App, MenuItem},
 };
+use tui::widgets::canvas::{Canvas, Points};
 
 //const ACCENT_COLOR:Color = Color::Rgb(255,96,0);
 const ACCENT_COLOR: Color = Color::Yellow;
@@ -81,13 +83,12 @@ where
     }
 
     //add the icons and footer
-
-    let icon = make_icon(
+    make_icon(
+        rect,
+        &stations_chunks[1],
         &app.icon_list,
         &app.get_selected_station().unwrap(),
-        stations_chunks[1].height,
     );
-    rect.render_widget(icon, stations_chunks[1]);
 
     let footer = status_bar(app.get_status(), &app.music_title);
     rect.render_widget(footer, chunks[2]);
@@ -268,27 +269,48 @@ fn make_stations_list<'a>(stations_list: &[Station], title: &'a str, style: Styl
     )
 }
 /**
-Paragraph with the stations icon, size depends on available space
+Canvas with the stations icon
  */
-fn make_icon<'a>(icon_list: &Value, selected_station: &Station, mut size: u16) -> Paragraph<'a> {
-    if size >= 30 {
-        size = 60
-    } else {
-        size = 30
-    }
-
-    let name = format!("{}_{}", &selected_station.prefix, size);
-
-    let icon = match icon_list[name].as_str() {
-        None => "no_icon",
-        Some(icon) => icon,
-    };
-    Paragraph::new(icon.to_string())
-        .alignment(Alignment::Center)
+fn make_icon<B>(
+    rect: &mut Frame<B>,
+    stations_chunks: &Rect,
+    icon_list: &StationsArtList,
+    selected_station: &Station,
+) where
+    B: Backend,
+{
+    let canvas_size = 200.0;
+    let icon_canvas = Canvas::default()
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .style(Style::default()),
+                .border_type(BorderType::Rounded),
         )
+        .paint(|ctx| {
+            let name = (&selected_station.prefix).to_string();
+
+            match icon_list.get(&name) {
+                None => ctx.print(-8.0, 5.0, "no_icon"),
+                Some(art) => {
+                    let mut shape = Vec::new();
+                    let icon = &art.icon;
+                    for coord in icon.iter() {
+                        let x = coord.0 as f64 + canvas_size / 2.0 - (art.size_x / 2) as f64;
+                        let y = -(coord.1 as f64);
+                        shape.push((x, y * 2.0));
+                        shape.push((x, y * 2.0 + 1.0));
+                    }
+
+                    ctx.draw(&Points {
+                        coords: &shape,
+                        color: Color::Reset,
+                    });
+                }
+            };
+        })
+        .marker(symbols::Marker::Braille)
+        .x_bounds([0.0, canvas_size * 0.9])
+        .y_bounds([-canvas_size, 0.0]);
+
+    rect.render_widget(icon_canvas, *stations_chunks);
 }

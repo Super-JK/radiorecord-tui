@@ -1,8 +1,7 @@
-use std::fmt::{Display, Formatter};
-
 use curl::easy::Easy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt::{Display, Formatter};
 /**
 Represent a song (title and artist)
 */

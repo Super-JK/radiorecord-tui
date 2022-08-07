@@ -1,14 +1,8 @@
 use tui::{backend::CrosstermBackend, widgets::ListState, Terminal};
 
-use crossterm::{
-    event::{self, Event as CEvent, KeyCode, KeyEvent},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
-};
-use serde_json::Value;
-
-use crate::config::{read_favorite, read_icons, toggle_to_favorite};
+use crate::config::{read_favorite, toggle_to_favorite};
 use crate::mpris::{launch_mpris_server, Command};
+use crate::tools::{read_icons, StationsArtList};
 use crate::ui::{render_help, render_stations};
 use crate::{
     api::{now_playing, stations_list, Station},
@@ -16,6 +10,11 @@ use crate::{
 };
 use crossbeam::channel;
 use crossbeam::channel::Sender;
+use crossterm::{
+    event::{self, Event as CEvent, KeyCode, KeyEvent},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
+};
 use rand::random;
 use std::fmt::{Display, Formatter};
 use std::{
@@ -62,7 +61,7 @@ pub struct App {
     pub stations_list_std: Vec<Station>,
     pub stations_list_fav: Vec<Station>,
     player: Player,
-    pub icon_list: Value,
+    pub icon_list: StationsArtList,
     active_context: Context,
     pub music_title: String,
     pub stations_list_state: ListState,
@@ -106,7 +105,7 @@ impl App {
         App {
             stations_list_std,
             stations_list_fav,
-            player: Player::new(),
+            player: Player::new(playing_station.stream_320.to_string()),
             icon_list: read_icons().expect("could not retrieve icons"),
             active_context: Context::Stations,
             music_title: String::from("Press n to show current song"),
@@ -189,8 +188,8 @@ impl App {
             // handle mpris commands if any
             if !rxm.is_empty() {
                 match rxm.recv()? {
-                    Command::PlayPause => self.toggle_playing(),
-                    Command::Pause => self.player.stop(),
+                    Command::PlayPause => self.player.toggle_play(),
+                    Command::Stop => self.player.stop(),
                     Command::Play => self.player.resume(),
                     Command::Next => {
                         self.next();
@@ -256,7 +255,7 @@ impl App {
                             self.stations_list_state.select(Some(random));
                         }
                     }
-                    KeyCode::Char(' ') => self.toggle_playing(),
+                    KeyCode::Char(' ') => self.player.toggle_play(),
                     KeyCode::Enter => {
                         if let Some(selected_station) = self.get_selected_station() {
                             let same = self.playing_station == selected_station;
@@ -267,7 +266,7 @@ impl App {
                                     self.playing_station = selected_station.clone();
                                 }
                             } else {
-                                self.toggle_playing()
+                                self.player.toggle_play()
                             }
                         }
                     }
@@ -308,14 +307,6 @@ impl App {
             }
         }
         Ok(())
-    }
-    //start or stop the current radio
-    fn toggle_playing(&mut self) {
-        if self.player.is_first_run() {
-            self.player.play(&self.playing_station.stream_320);
-        } else {
-            self.player.toggle_play()
-        }
     }
 }
 

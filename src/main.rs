@@ -1,19 +1,18 @@
-mod app;
-mod ui;
 mod api;
+mod app;
 mod config;
 mod mpris;
 mod player;
 mod tools;
+mod ui;
 
 use crate::api::stations_list;
 use crate::mpris::launch_mpris_server;
+use crate::tools::pause;
 use clap::{Arg, Command};
 use crossbeam::channel;
 use rand::random;
-use std::io::prelude::*;
-use std::process::exit;
-use std::{io, thread};
+use std::thread;
 use std::time::Duration;
 
 #[tokio::main]
@@ -68,8 +67,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "play" => {
                 // background player in cli
-                let mut player = player::Player::new();
 
+                let mut player = player::Player::new(list[0].stream_320.clone());
                 if let Some(st) = m.value_of("station") {
                     // if a station is selected play it
                     if let Some(station_found) = list.iter().find(|station| station.prefix == st) {
@@ -96,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     match rx.recv().unwrap() {
                         mpris::Command::PlayPause => player.toggle_play(),
-                        mpris::Command::Pause => player.stop(),
+                        mpris::Command::Stop => player.stop(),
                         mpris::Command::Play => player.resume(),
                         mpris::Command::Next => {
                             let random = random::<usize>() % list.len();
@@ -104,8 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("Now playing : {}", station.title);
                             player.force_play(&station.stream_320);
                         }
-                        mpris::Command::Previous => {
-                        }
+                        mpris::Command::Previous => {}
                     };
                 });
             }
@@ -118,19 +116,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // launch the tui app
         app::App::new().start().await
     }
-}
-/**
- Wait for the user to press enter
-**/
-fn pause() {
-    let mut stdin = io::stdin();
-    let mut stdout = io::stdout();
-
-    // We want the cursor to stay at the end of the line, so we print without a newline and flush manually.
-    write!(stdout, "Press enter to exit...").unwrap();
-    stdout.flush().unwrap();
-
-    // Read a single byte and discard
-    let _ = stdin.read(&mut [0u8]).unwrap();
-    exit(0);
 }

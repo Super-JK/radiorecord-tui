@@ -56,18 +56,18 @@ const TEMPFILE: &str = "rrsound";
 
 pub struct Player {
     playing: Arc<AtomicBool>,
-    url: Option<String>,
+    url: String,
     current: Arc<AtomicBool>,
 }
 /**
 Player used to control the station playback
  */
 impl Player {
-    pub fn new() -> Self {
+    pub fn new(url:String) -> Self {
         Self {
             playing: Arc::new(AtomicBool::new(false)),
             current: Arc::new(AtomicBool::new(true)),
-            url: None,
+            url,
         }
     }
     /**
@@ -93,23 +93,18 @@ impl Player {
         });
     }
 
-    pub fn is_first_run(&self) -> bool {
-        self.url.is_none()
-    }
 
     pub fn resume(&mut self) {
         if !self.is_playing() {
-            if let Some(url) = &self.url {
-                self.play(&url.clone());
-            }
+            self.play(&self.url.clone());
         }
     }
 
     pub fn toggle_play(&mut self) {
         if self.is_playing() {
             self.stop();
-        } else if let Some(url) = &self.url {
-            self.play(&url.clone());
+        } else {
+            self.play(&self.url.clone());
         }
     }
 
@@ -133,7 +128,7 @@ impl Player {
     pub fn force_play(&mut self, url: &str) -> bool {
         if self.is_playing() {
             self.stop();
-            thread::sleep(Duration::from_millis(200));
+            thread::sleep(Duration::from_millis(210));
             self.play(url)
         } else {
             self.play(url)
@@ -149,7 +144,7 @@ impl Player {
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_ok()
         {
-            self.url = Some(url.to_string());
+            self.url = url.to_string();
             self.fetch(url.to_string());
 
             let playing = self.playing.clone();

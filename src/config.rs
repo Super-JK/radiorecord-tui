@@ -1,7 +1,5 @@
 use crate::api::Station;
 use crate::config::Error::ReadConfig;
-use crate::tools::{get_all_icons, to_ascii};
-use serde_json::Value;
 use std::path::PathBuf;
 use std::{fs, io};
 use thiserror::Error;
@@ -12,6 +10,8 @@ pub enum Error {
     ReadFav(#[from] io::Error),
     #[error("error parsing the DB file: {0}")]
     ParseFav(#[from] serde_json::Error),
+    #[error("error parsing the DB file: {0}")]
+    ParseIcon(#[from] rmp_serde::decode::Error),
     #[error("error reading config dir")]
     ReadConfig(),
 }
@@ -48,24 +48,6 @@ pub fn read_favorite() -> Result<Vec<Station>, Error> {
         let parsed: Vec<Station> = serde_json::from_str(&content)?;
         Ok(parsed)
     }
-}
-/**
-Read the file containing ascii art for icons. If it doesnt exist generate it
- */
-pub fn read_icons() -> Result<Value, Error> {
-    let mut path = get_app_config_path()?;
-    path.push("ascii.json");
-
-    if !path.exists() {
-        println!("Downloading icons...");
-        get_all_icons();
-        println!("Converting icons...");
-        to_ascii();
-    }
-
-    let content = fs::read_to_string(path)?;
-    let parsed: Value = serde_json::from_str(&content)?;
-    Ok(parsed)
 }
 
 pub fn get_app_config_path() -> Result<PathBuf, Error> {
