@@ -15,6 +15,11 @@ pub struct MediaPlayerInterface {
     pub tx: Sender<Command>,
 }
 
+#[cfg(debug_assertions)]
+const INAME:&str = "org.mpris.MediaPlayer2.rrt_test";
+#[cfg(not(debug_assertions))]
+const INAME:&str = "org.mpris.MediaPlayer2.rrt";
+
 #[dbus_interface(name = "org.mpris.MediaPlayer2.Player")]
 #[allow(non_snake_case)]
 impl MediaPlayerInterface {
@@ -68,7 +73,7 @@ impl MediaPlayerInterface {
 pub async fn launch_mpris_server(tx: Sender<Command>) -> Result<(), Box<dyn std::error::Error>> {
     let player = MediaPlayerInterface { tx };
     let _ = ConnectionBuilder::session()?
-        .name("org.mpris.MediaPlayer2.rrt")?
+        .name(INAME)?
         .serve_at("/org/mpris/MediaPlayer2", player)?
         .build()
         .await?;
