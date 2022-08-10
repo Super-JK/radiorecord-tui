@@ -97,9 +97,7 @@ pub fn save_station_art() {
                     if y < min_y {
                         min_y = y
                     }
-                    if y > max_y {
-                        max_y = y
-                    }
+                    max_y = y
                 }
             }
         }
@@ -111,7 +109,7 @@ pub fn save_station_art() {
             StationArt {
                 icon: ascii,
                 size_x: max_x,
-                size_y: max_y,
+                size_y: max_y - min_y,
             },
         );
     }

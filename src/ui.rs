@@ -279,6 +279,7 @@ fn make_icon<B>(
 ) where
     B: Backend,
 {
+    let double = stations_chunks.width / 2 > stations_chunks.height;
     let canvas_size = 200.0;
     let icon_canvas = Canvas::default()
         .block(
@@ -294,12 +295,22 @@ fn make_icon<B>(
                 Some(art) => {
                     let mut shape = Vec::new();
                     let icon = &art.icon;
-                    for coord in icon.iter() {
-                        let x = coord.0 as f64 + canvas_size / 2.0 - (art.size_x / 2) as f64;
-                        let y = -(coord.1 as f64);
-                        shape.push((x, y * 2.0));
-                        shape.push((x, y * 2.0 + 1.0));
-                    }
+
+                    let offset_y = -canvas_size / 2.0 + art.size_y as f64;
+                    let offset_x = canvas_size / 2.0 - (art.size_x / 2) as f64;
+
+                    icon.iter().for_each(|(x, y)| {
+                        let x = *x as f64 + offset_x;
+
+                        if double {
+                            let y = -(*y as f64) + offset_y / 2.0;
+                            shape.push((x, y * 2.0));
+                            shape.push((x, y * 2.0 + 1.0));
+                        } else {
+                            let y = -(*y as f64) + offset_y * 2.0;
+                            shape.push((x, y));
+                        }
+                    });
 
                     ctx.draw(&Points {
                         coords: &shape,
