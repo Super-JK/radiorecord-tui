@@ -63,7 +63,7 @@ pub struct Player {
 Player used to control the station playback
  */
 impl Player {
-    pub fn new(url:String) -> Self {
+    pub fn new(url: String) -> Self {
         Self {
             playing: Arc::new(AtomicBool::new(false)),
             current: Arc::new(AtomicBool::new(true)),
@@ -92,7 +92,6 @@ impl Player {
             easy.perform()
         });
     }
-
 
     pub fn resume(&mut self) {
         if !self.is_playing() {

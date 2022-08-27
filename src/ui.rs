@@ -150,7 +150,7 @@ fn status_bar(status: Status, title: &str) -> Paragraph {
         )
 }
 /**
-Paragraph displaying informations about current station
+Paragraph displaying information about current station
  */
 fn info_bar<'a>(station: &Station) -> Paragraph<'a> {
     Paragraph::new(station.tooltip.to_string())

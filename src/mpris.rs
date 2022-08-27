@@ -16,9 +16,9 @@ pub struct MediaPlayerInterface {
 }
 
 #[cfg(debug_assertions)]
-const INAME:&str = "org.mpris.MediaPlayer2.rrt_test";
+const INAME: &str = "org.mpris.MediaPlayer2.rrt_test";
 #[cfg(not(debug_assertions))]
-const INAME:&str = "org.mpris.MediaPlayer2.rrt";
+const INAME: &str = "org.mpris.MediaPlayer2.rrt";
 
 #[dbus_interface(name = "org.mpris.MediaPlayer2.Player")]
 #[allow(non_snake_case)]
