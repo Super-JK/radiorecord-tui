@@ -149,7 +149,7 @@ pub fn pause() {
     let mut stdout = io::stdout();
 
     // We want the cursor to stay at the end of the line, so we print without a newline and flush manually.
-    write!(stdout, "Press enter to exit...").unwrap();
+    writeln!(stdout, "Press enter to exit...").unwrap();
     stdout.flush().unwrap();
 
     // Read a single byte and discard

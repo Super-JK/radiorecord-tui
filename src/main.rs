@@ -58,9 +58,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let line = m.is_present("line");
                 for station in list {
                     if line {
-                        s.push_str(&*format!("{}, ", station.prefix));
+                        s.push_str(&format!("{}, ", station.prefix));
                     } else {
-                        s.push_str(&*format!("{}\n", station.prefix));
+                        s.push_str(&format!("{}\n", station.prefix));
                     }
                 }
                 println!("{}", s);
@@ -73,7 +73,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // if a station is selected play it
                     if let Some(station_found) = list.iter().find(|station| station.prefix == st) {
                         player.play(&station_found.stream_320);
-                        pause()
                     } else {
                         panic!("Station not found")
                     }
@@ -83,7 +82,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let station = &list[random];
                     println!("Now playing : {}", station.title);
                     player.play(&station.stream_320);
-                    pause()
                 }
                 // launch and handle mpris interface
                 let (tx, rx) = channel::bounded(1);
@@ -106,9 +104,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         mpris::Command::Previous => {}
                     };
                 });
+                pause();
             }
             &_ => {
-                panic!("Command not found")
+                eprint!("Command not found")
             }
         }
         Ok(())

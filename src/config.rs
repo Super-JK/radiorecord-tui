@@ -26,11 +26,11 @@ pub fn toggle_to_favorite(station: &Station) -> Result<Vec<Station>, Error> {
 
     if !parsed.contains(station) {
         parsed.push(station.clone());
-        fs::write(path, &serde_json::to_vec(&parsed)?)?;
+        fs::write(path, serde_json::to_vec(&parsed)?)?;
     } else {
         let index = parsed.iter().position(|x| x == station).unwrap();
         parsed.remove(index);
-        fs::write(path, &serde_json::to_vec(&parsed)?)?;
+        fs::write(path, serde_json::to_vec(&parsed)?)?;
     }
     Ok(parsed)
 }

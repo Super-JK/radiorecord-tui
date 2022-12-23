@@ -104,7 +104,7 @@ Fetch the current playing song
 */
 pub fn now_playing(id: usize) -> Result<Title, ApiError> {
     match history(id) {
-        Ok(mut vec) => Ok(vec.remove(1)),
+        Ok(mut vec) => Ok(vec.remove(0)),
         Err(ApiError::ServerError) => now_playing_back(id),
         Err(error) => Err(error),
     }

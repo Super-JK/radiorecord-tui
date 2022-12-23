@@ -52,7 +52,7 @@ where
 
     //split the rect
     let stations_chunks = split_horizontal_chunk(chunks[1]);
-    let stations_list_chunks = split_vertical_chunk(stations_chunks[0]);
+    let stations_list_chunks = split_chunk(stations_chunks[0],Direction::Vertical,30,70);
 
     //generate the stations lists
     let list_std = make_std_stations_list(&app.stations_list_std, &app.active_menu_item);
@@ -97,21 +97,21 @@ where
 Split a Rect into two Rect horizontally (20% - 80%)
  */
 fn split_horizontal_chunk(chunk: Rect) -> Vec<Rect> {
-    split_chunk(chunk, Direction::Horizontal)
+    split_chunk(chunk, Direction::Horizontal, 20, 80)
 }
 /**
 Split a Rect into two Rect vertically (20% - 80%)
  */
-fn split_vertical_chunk(chunk: Rect) -> Vec<Rect> {
-    split_chunk(chunk, Direction::Vertical)
-}
+/*fn split_vertical_chunk(chunk: Rect) -> Vec<Rect> {
+    split_chunk(chunk, Direction::Vertical, 20, 80)
+}*/
 /**
-Split a Rect into two Rect in a given direction (20% - 80%)
+Split a Rect into two Rect in a given direction and percentage of the parts
  */
-fn split_chunk(chunk: Rect, dir: Direction) -> Vec<Rect> {
+fn split_chunk(chunk: Rect, dir: Direction, left:u16, right:u16) -> Vec<Rect> {
     Layout::default()
         .direction(dir)
-        .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
+        .constraints([Constraint::Percentage(left), Constraint::Percentage(right)].as_ref())
         .split(chunk)
 }
 /**
@@ -288,7 +288,7 @@ fn make_icon<B>(
                 .border_type(BorderType::Rounded),
         )
         .paint(|ctx| {
-            let name = (&selected_station.prefix).to_string();
+            let name = selected_station.prefix.to_string();
 
             match icon_list.get(&name) {
                 None => ctx.print(-8.0, 5.0, "no_icon"),

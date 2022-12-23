@@ -174,9 +174,9 @@ impl App {
         let (tx, rx) = channel::bounded(1);
         event_sender(tx);
 
-        let (txm, rxm) = channel::bounded(1);
+        let (mpris_tx, mpris_rx) = channel::bounded(1);
 
-        launch_mpris_server(txm).await?;
+        launch_mpris_server(mpris_tx).await?;
 
         loop {
             //draw the corresponding context each tick
@@ -186,8 +186,8 @@ impl App {
             })?;
 
             // handle mpris commands if any
-            if !rxm.is_empty() {
-                match rxm.recv()? {
+            if !mpris_rx.is_empty() {
+                match mpris_rx.recv()? {
                     Command::PlayPause => self.player.toggle_play(),
                     Command::Stop => self.player.stop(),
                     Command::Play => self.player.resume(),
