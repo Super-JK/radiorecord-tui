@@ -1,96 +1,135 @@
-use std::fs::File;
-
-use curl::easy::Easy;
-use std::io::{BufWriter, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use crossbeam::channel;
+use crossbeam::channel::{Sender};
 
 #[cfg(feature = "libmpv_player")]
 use libmpv::{FileState, Mpv};
 
-#[cfg(feature = "libmpv_player")]
-macro_rules! play {
-    ($_playing:ident) => {
-        let mut path = std::env::temp_dir();
-        path.push(TEMPFILE);
-
-        let mpv = Mpv::new().unwrap();
-        mpv.set_property("volume", 85).unwrap();
-        mpv.set_property("vo", "null").unwrap();
-        mpv.playlist_load_files(&[(&path.to_str().unwrap(), FileState::AppendPlay, None)])
-            .unwrap();
-    };
-}
-
 #[cfg(feature = "rodio_player")]
 use {
     rodio::{Decoder, OutputStream, Source},
-    std::io::BufReader,
+    std::io::{BufReader, BufWriter, Write},
+    curl::easy::Easy,
+    std::fs::File,
+    std::sync::{Arc,atomic::{AtomicBool, Ordering}},
 };
 
+
 #[cfg(feature = "rodio_player")]
-macro_rules! play {
-    ($playing:ident) => {
-        let (_stream, handle) = OutputStream::try_default().expect("no output found");
-        let mut path = std::env::temp_dir();
-        path.push(TEMPFILE);
-
-        let source = loop {
-            match Decoder::new(BufReader::new(File::open(&path).expect("file not found"))) {
-                Ok(source) => break source,
-                Err(_) => {}
-            };
-            if !$playing.load(Ordering::Acquire) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(500));
-        };
-
-        let _res = handle.play_raw(source.convert_samples());
-    };
-}
-
 const TEMPFILE: &str = "rrsound";
 
-pub struct Player {
-    playing: Arc<AtomicBool>,
-    url: String,
-    current: Arc<AtomicBool>,
+enum PlayerCommand {
+    Play(String),
+    Stop,
 }
+
+pub struct Player {
+    playing: bool,
+    url: String,
+    sender: Sender<PlayerCommand>,
+}
+
 /**
 Player used to control the station playback
  */
 impl Player {
     pub fn new(url: String) -> Self {
-        Self {
-            playing: Arc::new(AtomicBool::new(false)),
-            current: Arc::new(AtomicBool::new(true)),
-            url,
-        }
-    }
-    /**
-    Fetch and write the stream to a tempfile
-    */
-    fn fetch(&self, url: String) {
-        let playing = self.current.clone();
+        let (sender, receiver) = channel::bounded(1);
+
+        #[cfg(feature = "libmpv_player")]
         thread::spawn(move || {
-            let mut easy = Easy::new();
+            let mpv = Mpv::new().unwrap();
+            mpv.set_property("volume", 85).unwrap();
+            mpv.set_property("vo", "null").unwrap();
+
+            loop {
+                if receiver.is_empty() {
+                    thread::sleep(Duration::from_millis(200));
+                    continue;
+                }
+                match receiver.recv().unwrap() {
+                    PlayerCommand::Play(url) => {
+                        mpv.playlist_load_files(&[(&url, FileState::Replace, None)]).unwrap();
+                        mpv.unpause().unwrap();
+                    }
+                    PlayerCommand::Stop => {
+                        mpv.playlist_clear().unwrap();
+                        mpv.pause().unwrap()
+                    }
+                };
+            }
+        });
+
+
+        #[cfg(feature = "rodio_player")]
+        thread::spawn(move || {
             let mut path = std::env::temp_dir();
             path.push(TEMPFILE);
-            let mut file = BufWriter::new(File::create(&path).unwrap());
-            easy.url(url.as_str()).unwrap();
-            easy.write_function(move |data| {
-                file.write_all(data).unwrap();
-                Ok(data.len())
-            })
-            .unwrap();
-            easy.progress_function(move |_, _, _, _| playing.load(Ordering::Acquire))
-                .unwrap();
-            easy.progress(true).unwrap();
-            easy.perform()
+            let playing = Arc::new(AtomicBool::new(false));
+
+            loop {
+                if receiver.is_empty() {
+                    thread::sleep(Duration::from_millis(200));
+                    continue;
+                }
+                match receiver.recv().unwrap() {
+                    PlayerCommand::Play(url) => {
+
+                        // write to tempfile
+                        let mut file = BufWriter::new(File::create(&path).unwrap());
+                        let mut easy = Easy::new();
+                        easy.write_function(move |data| {
+                            file.write_all(data).unwrap();
+                            Ok(data.len())
+                        })
+                            .unwrap();
+
+                        let playing_ = playing.clone();
+                        easy.progress_function(move |_, _, _, _| {  playing_.load(Ordering::Acquire)})
+                            .unwrap();
+                        easy.progress(true).unwrap();
+                        easy.url(url.as_str()).unwrap();
+                        playing.store(true,Ordering::Release);
+
+                        thread::spawn(move || {
+                            easy.perform()
+                        });
+
+                        // read from tempfile
+                        let source = loop {
+                            match Decoder::new(BufReader::new(File::open(&path).expect("file not found"))) {
+                                Ok(source) => break source,
+                                Err(_) => {}
+                            };
+                        };
+
+                        let playing_ = playing.clone();
+                        thread::spawn(move || {
+
+                            let (_stream, handle) = OutputStream::try_default().expect("no output found");
+                            let _res = handle.play_raw(source.convert_samples());
+
+                            loop {
+                                if !playing_.load(Ordering::Acquire) {
+                                    break;
+                                }
+                                thread::sleep(Duration::from_millis(200));
+                            }
+                        });
+                    },
+                    PlayerCommand::Stop => { playing.store(false,Ordering::Relaxed);
+
+                    },
+                }
+            }
         });
+
+        Self {
+            playing: false,
+            url,
+            sender,
+        }
     }
 
     pub fn resume(&mut self) {
@@ -108,17 +147,18 @@ impl Player {
     }
 
     /**
-    Stop the player ( reading and writing)
+    Stop the player
      */
     pub fn stop(&mut self) {
-        self.current.store(false, Ordering::Release);
+        self.sender.send(PlayerCommand::Stop).unwrap();
+        self.playing = false;
     }
 
     /**
-    Return if the player is playing
+    Player is playing
      */
     pub fn is_playing(&self) -> bool {
-        self.playing.load(Ordering::Acquire)
+        self.playing
     }
 
     /**
@@ -127,7 +167,6 @@ impl Player {
     pub fn force_play(&mut self, url: &str) -> bool {
         if self.is_playing() {
             self.stop();
-            thread::sleep(Duration::from_millis(210));
             self.play(url)
         } else {
             self.play(url)
@@ -135,34 +174,15 @@ impl Player {
     }
 
     /**
-    Read and play the sound from the tempfile
-    */
+    Play the station from the specified url
+     */
     pub fn play(&mut self, url: &str) -> bool {
-        if self
-            .playing
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
+        if !self.playing
         {
             self.url = url.to_string();
-            self.fetch(url.to_string());
+            self.sender.send(PlayerCommand::Play(url.to_string())).unwrap();
+            self.playing = true;
 
-            let playing = self.playing.clone();
-            let current = self.current.clone();
-
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(1500));
-                play!(playing);
-
-                loop {
-                    if !current.load(Ordering::Acquire) {
-                        playing.store(false, Ordering::Release);
-                        thread::sleep(Duration::from_millis(100));
-                        current.store(true, Ordering::Release);
-                        break;
-                    }
-                    thread::sleep(Duration::from_millis(100));
-                }
-            });
             return true;
         }
         false

@@ -176,7 +176,7 @@ impl App {
 
         let (mpris_tx, mpris_rx) = channel::bounded(1);
 
-        launch_mpris_server(mpris_tx).await?;
+        let _conn = launch_mpris_server(mpris_tx).await?;
 
         loop {
             //draw the corresponding context each tick

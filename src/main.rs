@@ -85,7 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // launch and handle mpris interface
                 let (tx, rx) = channel::bounded(1);
-                launch_mpris_server(tx).await?;
+                let _conn = launch_mpris_server(tx).await?;
                 thread::spawn(move || loop {
                     if rx.is_empty() {
                         thread::sleep(Duration::from_millis(200));

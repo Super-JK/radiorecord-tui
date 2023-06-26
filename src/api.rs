@@ -103,14 +103,18 @@ pub fn history(id: usize) -> Result<Vec<Title>, ApiError> {
 Fetch the current playing song
 */
 pub fn now_playing(id: usize) -> Result<Title, ApiError> {
-    match history(id) {
-        Ok(mut vec) => Ok(vec.remove(0)),
-        Err(ApiError::ServerError) => now_playing_back(id),
-        Err(error) => Err(error),
+    let res = now_playing_back(id);
+    if res.is_ok() {
+        res
+    } else {
+        match history(id) {
+            Ok(mut vec) => Ok(vec.remove(0)),
+            Err(error) => Err(error),
+        }
     }
 }
 /**
-Fetch the current playing song from a different endpoints if th other fail
+Fetch the current playing song from the now endpoint
 */
 fn now_playing_back(id: usize) -> Result<Title, ApiError> {
     let data = read("https://www.radiorecord.ru/api/stations/now/")?;
@@ -118,7 +122,7 @@ fn now_playing_back(id: usize) -> Result<Title, ApiError> {
     let str_ = std::str::from_utf8(&data).unwrap();
     let json: ResNowPlaying = serde_json::from_str(str_).unwrap();
 
-    let station = json.result.into_iter().nth(id).unwrap();
+    let station = json.result.into_iter().find(|x| x.id == id).unwrap();
 
     Ok(station.track)
 }

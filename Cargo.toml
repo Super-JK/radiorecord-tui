@@ -9,7 +9,7 @@ license-file = "LICENSE"
 keywords = ["radiorecord", "tui", "cli", "terminal"]
 categories = ["command-line-utilities"]
 authors = ["Jika"]
-version = "0.2.1"
+version = "0.2.3"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -17,7 +17,7 @@ edition = "2021"
 [dependencies]
 
 rand = "0.8"
-crossterm = { version = "0.25", features = ["serde"] }
+crossterm = { version = "0.26", features = ["serde"] }
 tui = { version = "0.19", default-features = false, features = [
     'crossterm',
     'serde',
@@ -25,10 +25,10 @@ tui = { version = "0.19", default-features = false, features = [
 thiserror = "1.0"
 clap = "3.2"
 
-rodio = { git = "https://github.com/RustAudio/rodio", default-features = false, features = [
+rodio = { version = "0.17", default-features = false, features = [
     'symphonia-aac',
-] }
-libmpv = { git = "https://github.com/sirno/libmpv-rs.git", branch = "upgrade-libmpv", features = ["default"] }
+],optional = true }
+libmpv = { git = "https://github.com/ParadoxSpiral/libmpv-rs", features = ["default"], optional = true }
 
 curl = "0.4"
 serde = { version = "1.0", features = ["derive"] }
@@ -39,13 +39,13 @@ dirs-next = "2.0.0"
 image="0.24"
 
 tokio = { version = "1", features = ["full"] }
-zbus = { version = "3.5", default-features = false, features = ["tokio"] }
+zbus = { version = "3.13", default-features = false, features = ["tokio"] }
 crossbeam = "0.8"
 
 [features]
 default = ["libmpv_player"]
-libmpv_player = []
-rodio_player = []
+libmpv_player = ["libmpv"]
+rodio_player = ["rodio"]
 
 [[bin]]
 bench = false

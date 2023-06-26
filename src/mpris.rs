@@ -1,7 +1,7 @@
 use crossbeam::channel::Sender;
 use std::collections::HashMap;
 use zbus::zvariant::Value;
-use zbus::{dbus_interface, ConnectionBuilder};
+use zbus::{dbus_interface, ConnectionBuilder, Connection};
 
 pub enum Command {
     PlayPause,
@@ -20,8 +20,8 @@ const INAME: &str = "org.mpris.MediaPlayer2.rrt_test";
 #[cfg(not(debug_assertions))]
 const INAME: &str = "org.mpris.MediaPlayer2.rrt";
 
-#[dbus_interface(name = "org.mpris.MediaPlayer2.Player")]
 #[allow(non_snake_case)]
+#[dbus_interface(name = "org.mpris.MediaPlayer2.Player")]
 impl MediaPlayerInterface {
     #[dbus_interface(property, name = "CanControl")]
     fn CanControl(&self) -> bool {
@@ -70,12 +70,12 @@ impl MediaPlayerInterface {
     }
 }
 
-pub async fn launch_mpris_server(tx: Sender<Command>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn launch_mpris_server(tx: Sender<Command>) -> Result<Connection, Box<dyn std::error::Error>> {
     let player = MediaPlayerInterface { tx };
-    let _ = ConnectionBuilder::session()?
+    let conn = ConnectionBuilder::session()?
         .name(INAME)?
         .serve_at("/org/mpris/MediaPlayer2", player)?
         .build()
         .await?;
-    Ok(())
+    Ok(conn)
 }
