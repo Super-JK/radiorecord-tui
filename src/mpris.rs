@@ -1,7 +1,7 @@
 use crossbeam::channel::{Receiver, Sender};
 use std::collections::HashMap;
 use zbus::zvariant::Value;
-use zbus::{dbus_interface, ConnectionBuilder, Connection};
+use zbus::{dbus_interface, Connection, ConnectionBuilder};
 
 pub enum Command {
     PlayPause,
@@ -55,22 +55,21 @@ impl MediaPlayerInterface {
     async fn Metadata(&self) -> HashMap<&str, Value> {
         self.tx.send(Command::NowPlaying).expect("Could not send");
         let mut map = HashMap::new();
-        if let Response::NowPlaying(title) = self.rx.recv().unwrap(){
-            //map.insert("mpris:trackid", Value::from("f"));
+        if let Response::NowPlaying(title) = self.rx.recv().unwrap() {
             map.insert("xesam:title", Value::from(title));
-            return map
+            return map;
         }
-       map
+        map
     }
     #[dbus_interface(property, name = "PlaybackStatus")]
     async fn PlaybackStatus(&self) -> String {
         self.tx.send(Command::Status).expect("Could not send");
-        if let Ok(Response::Status(status)) = self.rx.recv(){
-          return status
+        if let Ok(Response::Status(status)) = self.rx.recv() {
+            status
+        } else {
+            "Unknown".to_string()
         }
-        "Unknown".to_string()
     }
-
 
     // Can be `async` as well.
     async fn Next(&mut self) {
@@ -89,11 +88,13 @@ impl MediaPlayerInterface {
     async fn PlayPause(&mut self) {
         self.tx.send(Command::PlayPause).expect("Could not send");
     }
-
 }
 
-pub async fn launch_mpris_server(tx: Sender<Command>, rx: Receiver<Response>) -> Result<Connection, Box<dyn std::error::Error>> {
-    let player = MediaPlayerInterface { tx , rx};
+pub async fn launch_mpris_server(
+    tx: Sender<Command>,
+    rx: Receiver<Response>,
+) -> Result<Connection, Box<dyn std::error::Error>> {
+    let player = MediaPlayerInterface { tx, rx };
     let conn = ConnectionBuilder::session()?
         .name(INAME)?
         .serve_at("/org/mpris/MediaPlayer2", player)?

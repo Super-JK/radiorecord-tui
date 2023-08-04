@@ -213,7 +213,12 @@ impl App {
                         player_tx.send(Response::NowPlaying(self.music_title.to_string())).unwrap();
                     }
                     Command::Status => {
-                        player_tx.send(Response::Status(self.get_status().to_string())).unwrap();
+                        let playing = if self.get_status().playing {
+                            "Playing"
+                        } else {
+                            "Stopped"  
+                        };
+                        player_tx.send(Response::Status(playing.to_string())).unwrap();
                     }
                 }
             }
