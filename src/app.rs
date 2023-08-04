@@ -1,7 +1,7 @@
 use tui::{backend::CrosstermBackend, widgets::ListState, Terminal};
 
 use crate::config::{read_favorite, toggle_to_favorite};
-use crate::mpris::{launch_mpris_server, Command};
+use crate::mpris::{launch_mpris_server, Command, Response};
 use crate::tools::{read_icons, StationsArtList};
 use crate::ui::{render_help, render_stations};
 use crate::{
@@ -23,6 +23,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[cfg(feature = "libmpv_player")]
+use crossterm::event::KeyModifiers;
 
 pub enum Event<I> {
     Input(I),
@@ -57,6 +59,7 @@ impl Display for Status {
         write!(f, "{} : {} ", np, self.station.title)
     }
 }
+
 pub struct App {
     pub stations_list_std: Vec<Station>,
     pub stations_list_fav: Vec<Station>,
@@ -100,7 +103,7 @@ impl App {
             MenuItem::Favorite(_) => &stations_list_fav,
             MenuItem::Standard(_) => &stations_list_std,
         }[0]
-        .clone();
+            .clone();
 
         App {
             stations_list_std,
@@ -175,8 +178,9 @@ impl App {
         event_sender(tx);
 
         let (mpris_tx, mpris_rx) = channel::bounded(1);
+        let (player_tx, player_rx) = channel::bounded(1);
 
-        let _conn = launch_mpris_server(mpris_tx).await?;
+        let _conn = launch_mpris_server(mpris_tx, player_rx).await?;
 
         loop {
             //draw the corresponding context each tick
@@ -204,6 +208,12 @@ impl App {
                         if self.player.force_play(&station.stream_320) {
                             self.playing_station = station;
                         }
+                    }
+                    Command::NowPlaying => {
+                        player_tx.send(Response::NowPlaying(self.music_title.to_string())).unwrap();
+                    }
+                    Command::Status => {
+                        player_tx.send(Response::Status(self.get_status().to_string())).unwrap();
                     }
                 }
             }
@@ -235,8 +245,18 @@ impl App {
                         }
                     }
                     KeyCode::Char('n') => {
-                        self.music_title =
-                            now_playing(self.playing_station.id).unwrap().to_string();
+                        #[cfg(feature = "libmpv_player")]
+                        {
+                            if self.get_status().playing {
+                                if let Some(title) = self.player.now_playing() {
+                                    self.music_title = title;
+                                }
+                            }
+                        }
+                        #[cfg(feature = "rodio_player")]{
+                            self.music_title =
+                                now_playing(self.playing_station.id).unwrap().to_string();
+                        }
                     }
                     KeyCode::Char('N') => {
                         if let Some(selected_station) = self.get_selected_station() {
@@ -316,6 +336,8 @@ Capture and resend key press as well as sending tick for refresh
 fn event_sender(tx: Sender<Event<KeyEvent>>) {
     thread::spawn(move || {
         let mut last_tick = Instant::now();
+        #[cfg(feature = "libmpv_player")]
+            let mut tick_to_playing = 20;
         loop {
             let timeout = TICK_RATE
                 .checked_sub(last_tick.elapsed())
@@ -328,6 +350,15 @@ fn event_sender(tx: Sender<Event<KeyEvent>>) {
             }
 
             if last_tick.elapsed() >= TICK_RATE && tx.send(Event::Tick).is_ok() {
+                #[cfg(feature = "libmpv_player")]
+                {
+                    tick_to_playing -= 1;
+                    if tick_to_playing <= 0 {
+                        tick_to_playing = 4;
+                        tx.send(Event::Input(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::empty()))).expect("could not send");
+                    }
+                }
+
                 last_tick = Instant::now();
             }
         }

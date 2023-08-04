@@ -1,7 +1,7 @@
 use std::thread;
 use std::time::Duration;
 use crossbeam::channel;
-use crossbeam::channel::{Sender};
+use crossbeam::channel::{Receiver, Sender};
 
 #[cfg(feature = "libmpv_player")]
 use libmpv::{FileState, Mpv};
@@ -22,12 +22,19 @@ const TEMPFILE: &str = "rrsound";
 enum PlayerCommand {
     Play(String),
     Stop,
+    NowPlaying,
 }
+
+enum PlayerResponse {
+    NowPlaying(String),
+}
+
 
 pub struct Player {
     playing: bool,
     url: String,
     sender: Sender<PlayerCommand>,
+    receiver: Receiver<PlayerResponse>,
 }
 
 /**
@@ -35,7 +42,8 @@ Player used to control the station playback
  */
 impl Player {
     pub fn new(url: String) -> Self {
-        let (sender, receiver) = channel::bounded(1);
+        let (sender_player, receiver_player) = channel::bounded(1);
+        let (sender_interface, receiver_interface) = channel::bounded(1);
 
         #[cfg(feature = "libmpv_player")]
         thread::spawn(move || {
@@ -44,11 +52,11 @@ impl Player {
             mpv.set_property("vo", "null").unwrap();
 
             loop {
-                if receiver.is_empty() {
+                if receiver_player.is_empty() {
                     thread::sleep(Duration::from_millis(200));
                     continue;
                 }
-                match receiver.recv().unwrap() {
+                match receiver_player.recv().unwrap() {
                     PlayerCommand::Play(url) => {
                         mpv.playlist_load_files(&[(&url, FileState::Replace, None)]).unwrap();
                         mpv.unpause().unwrap();
@@ -56,6 +64,13 @@ impl Player {
                     PlayerCommand::Stop => {
                         mpv.playlist_clear().unwrap();
                         mpv.pause().unwrap()
+                    }
+                    PlayerCommand::NowPlaying => {
+                        let mut title = "Loading...".to_string();
+                        if let Ok(title_) = mpv.get_property::<String>("media-title"){
+                            title = title_;
+                        }
+                        sender_interface.send(PlayerResponse::NowPlaying(title)).unwrap();
                     }
                 };
             }
@@ -69,11 +84,11 @@ impl Player {
             let playing = Arc::new(AtomicBool::new(false));
 
             loop {
-                if receiver.is_empty() {
+                if receiver_player.is_empty() {
                     thread::sleep(Duration::from_millis(200));
                     continue;
                 }
-                match receiver.recv().unwrap() {
+                match receiver_player.recv().unwrap() {
                     PlayerCommand::Play(url) => {
 
                         // write to tempfile
@@ -98,9 +113,8 @@ impl Player {
 
                         // read from tempfile
                         let source = loop {
-                            match Decoder::new(BufReader::new(File::open(&path).expect("file not found"))) {
-                                Ok(source) => break source,
-                                Err(_) => {}
+                            if let Ok(source) = Decoder::new(BufReader::new(File::open(&path).expect("file not found"))) {
+                                break source;
                             };
                         };
 
@@ -121,6 +135,9 @@ impl Player {
                     PlayerCommand::Stop => { playing.store(false,Ordering::Relaxed);
 
                     },
+                    PlayerCommand::NowPlaying => {
+                        sender_interface.send(PlayerResponse::NowPlaying("Not implemented".to_string())).unwrap();
+                    }
                 }
             }
         });
@@ -128,7 +145,8 @@ impl Player {
         Self {
             playing: false,
             url,
-            sender,
+            sender: sender_player,
+            receiver: receiver_interface,
         }
     }
 
@@ -186,5 +204,19 @@ impl Player {
             return true;
         }
         false
+    }
+
+
+    /// The current playing title (author and title name)
+    pub fn now_playing(&self) -> Option<String>{
+        self.sender.send(PlayerCommand::NowPlaying).unwrap();
+        let res = self.receiver.recv().unwrap();
+
+        if let PlayerResponse::NowPlaying(title) = res{
+            return Some(title);
+        }
+
+        None
+
     }
 }

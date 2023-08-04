@@ -7,7 +7,7 @@ mod tools;
 mod ui;
 
 use crate::api::stations_list;
-use crate::mpris::launch_mpris_server;
+use crate::mpris::{launch_mpris_server, Response};
 use crate::tools::pause;
 use clap::{Arg, Command};
 use crossbeam::channel;
@@ -84,14 +84,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     player.play(&station.stream_320);
                 }
                 // launch and handle mpris interface
+                let (mpris_tx, mpris_rx) = channel::bounded(1);
                 let (tx, rx) = channel::bounded(1);
-                let _conn = launch_mpris_server(tx).await?;
+
+                let _conn = launch_mpris_server(mpris_tx, rx).await?;
                 thread::spawn(move || loop {
-                    if rx.is_empty() {
+                    if mpris_rx.is_empty() {
                         thread::sleep(Duration::from_millis(200));
                         continue;
                     }
-                    match rx.recv().unwrap() {
+                    match mpris_rx.recv().unwrap() {
                         mpris::Command::PlayPause => player.toggle_play(),
                         mpris::Command::Stop => player.stop(),
                         mpris::Command::Play => player.resume(),
@@ -102,6 +104,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             player.force_play(&station.stream_320);
                         }
                         mpris::Command::Previous => {}
+                        mpris::Command::NowPlaying => {
+                            #[cfg(feature = "libmpv_player")]
+                            {
+                                if let Some(title) = player.now_playing() {
+                                    tx.send(Response::NowPlaying(title)).unwrap();
+                                }
+                            }
+
+                        }
+                        mpris::Command::Status => {
+                            let status = if player.is_playing(){
+                                "Playing"
+                            } else {
+                                "Stopped"
+                            };
+                            tx.send(Response::Status(status.to_string())).unwrap();
+                        }
                     };
                 });
                 pause();
