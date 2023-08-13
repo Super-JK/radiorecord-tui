@@ -3,8 +3,11 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols,
-    text::{Span, Spans},
-    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph},
+    text::{Span, Line},
+    widgets::{
+        canvas::{Canvas, Points},
+        Block, BorderType, Borders, List, ListItem, Paragraph,
+    },
     Frame,
 };
 
@@ -14,7 +17,6 @@ use crate::{
     api::Station,
     app::{App, MenuItem},
 };
-use tui::widgets::canvas::{Canvas, Points};
 
 //const ACCENT_COLOR:Color = Color::Rgb(255,96,0);
 const ACCENT_COLOR: Color = Color::Yellow;
@@ -52,11 +54,11 @@ where
 
     //split the rect
     let stations_chunks = split_horizontal_chunk(chunks[1]);
-    let stations_list_chunks = split_chunk(stations_chunks[0],Direction::Vertical,30,70);
+    let stations_list_chunks = split_chunk(stations_chunks[0], Direction::Vertical, 30, 70);
 
     //generate the stations lists
-    let list_std = make_std_stations_list(&app.stations_list_std, &app.active_menu_item);
-    let list_fav = make_fav_stations_list(&app.stations_list_fav, &app.active_menu_item);
+    let list_std = make_std_stations_list(&app.get_stations_list_std(), &app.active_menu_item);
+    let list_fav = make_fav_stations_list(&app.get_stations_list_fav(), &app.active_menu_item);
 
     //add the stations list. Only the active list is navigable
     match app.active_menu_item {
@@ -108,11 +110,12 @@ Split a Rect into two Rect vertically (20% - 80%)
 /**
 Split a Rect into two Rect in a given direction and percentage of the parts
  */
-fn split_chunk(chunk: Rect, dir: Direction, left:u16, right:u16) -> Vec<Rect> {
+fn split_chunk(chunk: Rect, dir: Direction, left: u16, right: u16) -> Vec<Rect> {
     Layout::default()
         .direction(dir)
         .constraints([Constraint::Percentage(left), Constraint::Percentage(right)].as_ref())
         .split(chunk)
+        .to_vec()
 }
 /**
 Split a Rect into 3 pieces (Default Layout)
@@ -129,6 +132,7 @@ fn base_chunk(size: Rect) -> Vec<Rect> {
             .as_ref(),
         )
         .split(size)
+        .to_vec()
 }
 /**
 Paragraph displaying currently playing song
@@ -169,45 +173,45 @@ Paragraph for the help menu
  */
 fn help_paragraph<'a>() -> Paragraph<'a> {
     let home = Paragraph::new(vec![
-        Spans::from(vec![Span::styled(
+        Line::from(vec![Span::styled(
             format!("{:50}{:40}", "Description", "Key"),
             Style::default().fg(Color::Red),
         )]),
-        Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::raw(format!(
+        Line::from(vec![Span::raw("")]),
+        Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
             "Change station list", "<Esc>"
         ))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Go to Help", "h"))]),
-        Spans::from(vec![Span::raw(format!(
+        Line::from(vec![Span::raw(format!("{:50}{:40}", "Go to Help", "h"))]),
+        Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
             "Move up", "<Up Arrow key>"
         ))]),
-        Spans::from(vec![Span::raw(format!(
+        Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
             "Move down", "<Down Arrow Key>"
         ))]),
-        Spans::from(vec![Span::raw(format!(
+        Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
             "Change station", "<Enter>"
         ))]),
-        Spans::from(vec![Span::raw(format!(
+        Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
             "Play/pause station", "<Space>"
         ))]),
-        Spans::from(vec![Span::raw(format!(
+        Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
             "Add/remove from favorite", "f"
         ))]),
-        Spans::from(vec![Span::raw(format!(
+        Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
             "Get current playing song", "n"
         ))]),
-        Spans::from(vec![Span::raw(format!(
+        Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
             "Get current playing song on the selected station", "N"
         ))]),
-        Spans::from(vec![Span::raw(format!("{:50}{:40}", "Quit program", "q"))]),
+        Line::from(vec![Span::raw(format!("{:50}{:40}", "Quit program", "q"))]),
     ])
     .alignment(Alignment::Left)
     .block(
@@ -222,7 +226,7 @@ fn help_paragraph<'a>() -> Paragraph<'a> {
 /**
 She standard station list as a List with the correct style to be displayed
  */
-fn make_std_stations_list<'a>(stations_list: &[Station], menu_item: &MenuItem) -> List<'a> {
+fn make_std_stations_list<'a>(stations_list: &[&Station], menu_item: &MenuItem) -> List<'a> {
     let style = match menu_item {
         MenuItem::Standard(_) => Style::default().fg(ACCENT_COLOR),
         _ => Style::default(),
@@ -232,7 +236,7 @@ fn make_std_stations_list<'a>(stations_list: &[Station], menu_item: &MenuItem) -
 /**
 She favorite station list as a List with the correct style to be displayed
  */
-fn make_fav_stations_list<'a>(stations_list: &[Station], menu_item: &MenuItem) -> List<'a> {
+fn make_fav_stations_list<'a>(stations_list: &[&Station], menu_item: &MenuItem) -> List<'a> {
     let style = match menu_item {
         MenuItem::Favorite(_) => Style::default().fg(ACCENT_COLOR),
         _ => Style::default(),
@@ -243,7 +247,7 @@ fn make_fav_stations_list<'a>(stations_list: &[Station], menu_item: &MenuItem) -
 /**
 Generate the stations list based on the stations names
  */
-fn make_stations_list<'a>(stations_list: &[Station], title: &'a str, style: Style) -> List<'a> {
+fn make_stations_list<'a>(stations_list: &[&Station], title: &'a str, style: Style) -> List<'a> {
     let stations = Block::default()
         .borders(Borders::ALL)
         .style(Style::default())
@@ -254,7 +258,7 @@ fn make_stations_list<'a>(stations_list: &[Station], title: &'a str, style: Styl
     let items: Vec<_> = stations_list
         .iter()
         .map(|station| {
-            ListItem::new(Spans::from(vec![Span::styled(
+            ListItem::new(Line::from(vec![Span::styled(
                 station.title.clone(),
                 Style::default(),
             )]))

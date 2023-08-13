@@ -61,8 +61,8 @@ impl Display for Status {
 }
 
 pub struct App {
-    pub stations_list_std: Vec<Station>,
-    pub stations_list_fav: Vec<Station>,
+    stations_list_std: Vec<Station>,
+    stations_list_fav: Vec<Station>,
     player: Player,
     pub icon_list: StationsArtList,
     active_context: Context,
@@ -73,6 +73,15 @@ pub struct App {
 }
 
 impl App {
+
+    pub fn get_stations_list_std(&self) -> Vec<&Station>{
+       self.stations_list_std.iter().filter(|s| s.title.contains("")).collect()
+    }
+    
+    pub fn get_stations_list_fav(&self) -> Vec<&Station>{
+       self.stations_list_fav.iter().filter(|s| s.title.contains("")).collect()
+    }
+
     pub fn new() -> Self {
         //try to get the stations list. Exit the program if impossible
         let stations_list_std = match stations_list() {

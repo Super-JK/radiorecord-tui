@@ -17,8 +17,8 @@ edition = "2021"
 [dependencies]
 thiserror = "1.0"
 rand = "0.8"
-crossterm = { version = "0.26", features = ["serde"] }
-tui = { version = "0.19", default-features = false, features = [
+crossterm = { version = "0.27", features = ["serde"] }
+tui = { package="ratatui", version = "0.22", default-features = false, features = [
     'crossterm',
     'serde',
 ] }
