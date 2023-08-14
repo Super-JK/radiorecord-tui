@@ -1590,6 +1590,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tui-input",
  "zbus",
 ]
 
@@ -2184,6 +2185,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0955b8137a1df6f1a2e9a37d8a6656291ff0297c1a97c24e0d8425fe2312f79a"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "tui-input"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3e785f863a3af4c800a2a669d0b64c879b538738e352607e2624d03f868dc01"
+dependencies = [
+ "crossterm 0.27.0",
+ "unicode-width",
 ]
 
 [[package]]

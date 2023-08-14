@@ -19,7 +19,7 @@ impl Display for Title {
 /**
 Represent a station with useful info
  */
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Station {
     pub id: usize,
     pub title: String,
@@ -29,6 +29,7 @@ pub struct Station {
     pub icon_fill_white: String,
     pub stream_320: String,
 }
+
 impl PartialEq for Station {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id

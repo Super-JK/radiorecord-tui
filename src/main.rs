@@ -111,10 +111,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tx.send(Response::NowPlaying(title)).unwrap();
                                 }
                             }
-
                         }
                         mpris::Command::Status => {
-                            let status = if player.is_playing(){
+                            let status = if player.is_playing() {
                                 "Playing"
                             } else {
                                 "Stopped"

@@ -1,5 +1,3 @@
-use tui::{backend::CrosstermBackend, widgets::ListState, Terminal};
-
 use crate::config::{read_favorite, toggle_to_favorite};
 use crate::mpris::{launch_mpris_server, Command, Response};
 use crate::tools::{read_icons, StationsArtList};
@@ -23,12 +21,14 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-#[cfg(feature = "libmpv_player")]
-use crossterm::event::KeyModifiers;
+use tui::{backend::CrosstermBackend, widgets::ListState, Terminal};
+use tui_input::backend::crossterm::EventHandler;
+use tui_input::Input;
 
 pub enum Event<I> {
     Input(I),
     Tick,
+    NowPlaying,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -66,22 +66,15 @@ pub struct App {
     player: Player,
     pub icon_list: StationsArtList,
     active_context: Context,
+    pub filter: bool,
     pub music_title: String,
     pub stations_list_state: ListState,
     pub playing_station: Station,
     pub active_menu_item: MenuItem,
+    pub input: Input,
 }
 
 impl App {
-
-    pub fn get_stations_list_std(&self) -> Vec<&Station>{
-       self.stations_list_std.iter().filter(|s| s.title.contains("")).collect()
-    }
-    
-    pub fn get_stations_list_fav(&self) -> Vec<&Station>{
-       self.stations_list_fav.iter().filter(|s| s.title.contains("")).collect()
-    }
-
     pub fn new() -> Self {
         //try to get the stations list. Exit the program if impossible
         let stations_list_std = match stations_list() {
@@ -112,7 +105,9 @@ impl App {
             MenuItem::Favorite(_) => &stations_list_fav,
             MenuItem::Standard(_) => &stations_list_std,
         }[0]
-            .clone();
+        .clone();
+
+        let input = Input::default();
 
         App {
             stations_list_std,
@@ -124,16 +119,34 @@ impl App {
             stations_list_state,
             playing_station,
             active_menu_item,
+            filter: false,
+            input,
         }
     }
 
-    pub fn get_stations_list(&self) -> &Vec<Station> {
+    pub fn get_stations_list(&self) -> Vec<&Station> {
         match self.active_menu_item {
-            MenuItem::Favorite(_) => &self.stations_list_fav,
-            _ => &self.stations_list_std,
+            MenuItem::Favorite(_) => self.get_stations_list_fav(),
+            _ => self.get_stations_list_std(),
         }
     }
+    fn get_filtered_station<'a>(&'a self, stations: &'a [Station]) -> Vec<&Station> {
+        let value = self.input.value().to_lowercase();
+        stations
+            .iter()
+            .filter(|s| {
+                s.title.to_lowercase().contains(&value) || s.tooltip.to_lowercase().contains(&value)
+            })
+            .collect()
+    }
 
+    pub fn get_stations_list_std(&self) -> Vec<&Station> {
+        self.get_filtered_station(&self.stations_list_std)
+    }
+
+    pub fn get_stations_list_fav(&self) -> Vec<&Station> {
+        self.get_filtered_station(&self.stations_list_fav)
+    }
     pub fn get_status(&self) -> Status {
         Status {
             station: self.playing_station.clone(),
@@ -142,6 +155,9 @@ impl App {
     }
 
     pub fn get_selected_station(&self) -> Option<Station> {
+        if self.get_stations_list().is_empty() {
+            return None;
+        }
         self.stations_list_state
             .selected()
             .map(|selected| self.get_stations_list()[selected].clone())
@@ -168,6 +184,21 @@ impl App {
             } else {
                 self.stations_list_state.select(Some(amount_stations - 1));
             }
+        }
+    }
+
+    fn update_now_playing(&mut self) {
+        #[cfg(feature = "libmpv_player")]
+        {
+            if self.get_status().playing {
+                if let Some(title) = self.player.now_playing() {
+                    self.music_title = title;
+                }
+            }
+        }
+        #[cfg(feature = "rodio_player")]
+        {
+            self.music_title = now_playing(self.playing_station.id).unwrap().to_string();
         }
     }
 
@@ -219,125 +250,143 @@ impl App {
                         }
                     }
                     Command::NowPlaying => {
-                        player_tx.send(Response::NowPlaying(self.music_title.to_string())).unwrap();
+                        player_tx
+                            .send(Response::NowPlaying(self.music_title.to_string()))
+                            .unwrap();
                     }
                     Command::Status => {
                         let playing = if self.get_status().playing {
                             "Playing"
                         } else {
-                            "Stopped"  
+                            "Stopped"
                         };
-                        player_tx.send(Response::Status(playing.to_string())).unwrap();
+                        player_tx
+                            .send(Response::Status(playing.to_string()))
+                            .unwrap();
                     }
                 }
             }
 
             //wait for a tick or keyPress before continuing
             match rx.recv()? {
-                Event::Input(event) => match event.code {
-                    KeyCode::Char('q') => {
-                        let mut stdout = io::stdout();
-                        stdout.execute(LeaveAlternateScreen)?;
-                        disable_raw_mode()?;
-                        terminal.show_cursor()?;
-                        break;
+                Event::Input(event) => {
+                    if self.filter {
+                        match event.code {
+                            KeyCode::Esc => self.input.reset(),
+                            KeyCode::Enter => {}
+                            _ => {
+                                self.input.handle_event(&CEvent::Key(event));
+                                continue;
+                            }
+                        }
+                        self.filter = !self.filter;
+                        continue;
                     }
-                    KeyCode::Char('h') | KeyCode::Char('?') => self.active_context = Context::Help,
-                    KeyCode::Char('f') => {
-                        if let Some(selected_station) = self.get_selected_station() {
-                            self.stations_list_fav =
-                                toggle_to_favorite(&selected_station).expect("can add to fav");
+                    match event.code {
+                        KeyCode::Char('q') => {
+                            let mut stdout = io::stdout();
+                            stdout.execute(LeaveAlternateScreen)?;
+                            disable_raw_mode()?;
+                            terminal.show_cursor()?;
+                            break;
+                        }
+                        KeyCode::Char('h') | KeyCode::Char('?') => {
+                            self.active_context = Context::Help
+                        }
+                        KeyCode::Char('f') => {
+                            if let Some(selected_station) = self.get_selected_station() {
+                                self.stations_list_fav =
+                                    toggle_to_favorite(&selected_station).expect("can add to fav");
 
-                            if let Some(selected) = self.stations_list_state.selected() {
-                                if selected == self.get_stations_list().len() {
-                                    self.stations_list_state.select(Some(selected - 1))
+                                if let Some(selected) = self.stations_list_state.selected() {
+                                    if selected == self.get_stations_list().len() {
+                                        self.stations_list_state.select(Some(selected - 1))
+                                    }
+                                }
+                                if self.stations_list_fav.is_empty() {
+                                    self.active_menu_item = MenuItem::Standard(true)
                                 }
                             }
-                            if self.stations_list_fav.is_empty() {
-                                self.active_menu_item = MenuItem::Standard(true)
+                        }
+                        KeyCode::Char('n') => self.update_now_playing(),
+                        KeyCode::Char('N') => {
+                            if let Some(selected_station) = self.get_selected_station() {
+                                let id = selected_station.id;
+                                self.music_title = now_playing(id).unwrap().to_string();
                             }
                         }
-                    }
-                    KeyCode::Char('n') => {
-                        #[cfg(feature = "libmpv_player")]
-                        {
-                            if self.get_status().playing {
-                                if let Some(title) = self.player.now_playing() {
-                                    self.music_title = title;
+                        KeyCode::Char('r') => {
+                            let random = random::<usize>() % self.get_stations_list().len();
+
+                            let temp = self.get_stations_list()[random].clone();
+                            let url = &temp.stream_320;
+
+                            if self.player.force_play(url) {
+                                self.playing_station = self.get_stations_list()[random].clone();
+                                self.stations_list_state.select(Some(random));
+                            }
+                        }
+                        KeyCode::Char(' ') => self.player.toggle_play(),
+                        KeyCode::Enter => {
+                            if let Some(selected_station) = self.get_selected_station() {
+                                let same = self.playing_station == selected_station;
+
+                                if !same {
+                                    let url = &selected_station.stream_320;
+                                    if self.player.force_play(url) {
+                                        self.playing_station = selected_station.clone();
+                                    }
+                                } else {
+                                    self.player.toggle_play()
                                 }
                             }
                         }
-                        #[cfg(feature = "rodio_player")]{
-                            self.music_title =
-                                now_playing(self.playing_station.id).unwrap().to_string();
-                        }
-                    }
-                    KeyCode::Char('N') => {
-                        if let Some(selected_station) = self.get_selected_station() {
-                            let id = selected_station.id;
-                            self.music_title = now_playing(id).unwrap().to_string();
-                        }
-                    }
-                    KeyCode::Char('r') => {
-                        let random = random::<usize>() % self.get_stations_list().len();
-
-                        let temp = self.get_stations_list()[random].clone();
-                        let url = &temp.stream_320;
-
-                        if self.player.force_play(url) {
-                            self.playing_station = self.get_stations_list()[random].clone();
-                            self.stations_list_state.select(Some(random));
-                        }
-                    }
-                    KeyCode::Char(' ') => self.player.toggle_play(),
-                    KeyCode::Enter => {
-                        if let Some(selected_station) = self.get_selected_station() {
-                            let same = self.playing_station == selected_station;
-
-                            if !same {
-                                let url = &selected_station.stream_320;
-                                if self.player.force_play(url) {
-                                    self.playing_station = selected_station.clone();
+                        KeyCode::Down => match self.active_menu_item {
+                            MenuItem::Favorite(true) | MenuItem::Standard(true) => {
+                                self.next();
+                            }
+                            _ => {
+                                if !self.get_stations_list_std().is_empty() {
+                                    self.active_menu_item = MenuItem::Standard(true);
+                                    self.stations_list_state.select(Some(0));
                                 }
-                            } else {
-                                self.player.toggle_play()
+                            }
+                        },
+                        KeyCode::Up => match self.active_menu_item {
+                            MenuItem::Favorite(true) | MenuItem::Standard(true) => {
+                                self.previous();
+                            }
+                            _ => {
+                                if !self.get_stations_list_fav().is_empty() {
+                                    self.active_menu_item = MenuItem::Favorite(true);
+                                    self.stations_list_state.select(Some(0));
+                                };
+                            }
+                        },
+                        KeyCode::Esc => match self.active_context {
+                            Context::Help => self.active_context = Context::Stations,
+                            Context::Stations => {
+                                self.active_menu_item = match self.active_menu_item {
+                                    MenuItem::Favorite(true) => MenuItem::Favorite(false),
+                                    MenuItem::Standard(true) => MenuItem::Standard(false),
+                                    _ => MenuItem::Standard(false),
+                                }
+                            }
+                        },
+                        KeyCode::Char('/') => {
+                            if let Context::Stations = self.active_context {
+                                self.filter = !self.filter;
+                                self.active_menu_item = MenuItem::Standard(false);
+                                self.stations_list_state.select(None);
                             }
                         }
+
+                        _ => {}
                     }
-                    KeyCode::Down => match self.active_menu_item {
-                        MenuItem::Favorite(true) | MenuItem::Standard(true) => {
-                            self.next();
-                        }
-                        _ => {
-                            self.active_menu_item = MenuItem::Standard(true);
-                            self.stations_list_state.select(Some(0));
-                        }
-                    },
-                    KeyCode::Up => match self.active_menu_item {
-                        MenuItem::Favorite(true) | MenuItem::Standard(true) => {
-                            self.previous();
-                        }
-                        _ => {
-                            if !self.stations_list_fav.is_empty() {
-                                self.active_menu_item = MenuItem::Favorite(true);
-                                self.stations_list_state.select(Some(0));
-                            };
-                        }
-                    },
-                    KeyCode::Esc => match self.active_context {
-                        Context::Help => self.active_context = Context::Stations,
-                        Context::Stations => {
-                            self.active_menu_item = match self.active_menu_item {
-                                MenuItem::Favorite(true) => MenuItem::Favorite(false),
-                                MenuItem::Standard(true) => MenuItem::Standard(false),
-                                _ => MenuItem::Standard(false),
-                            }
-                        }
-                    },
-                    _ => {}
-                },
+                }
 
                 Event::Tick => {}
+                Event::NowPlaying => self.update_now_playing(),
             }
         }
         Ok(())
@@ -351,7 +400,7 @@ fn event_sender(tx: Sender<Event<KeyEvent>>) {
     thread::spawn(move || {
         let mut last_tick = Instant::now();
         #[cfg(feature = "libmpv_player")]
-            let mut tick_to_playing = 20;
+        let mut tick_to_playing = 20;
         loop {
             let timeout = TICK_RATE
                 .checked_sub(last_tick.elapsed())
@@ -369,7 +418,7 @@ fn event_sender(tx: Sender<Event<KeyEvent>>) {
                     tick_to_playing -= 1;
                     if tick_to_playing <= 0 {
                         tick_to_playing = 4;
-                        tx.send(Event::Input(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::empty()))).expect("could not send");
+                        tx.send(Event::NowPlaying).expect("could not send");
                     }
                 }
 

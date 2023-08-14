@@ -3,7 +3,7 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols,
-    text::{Span, Line},
+    text::{Line, Span},
     widgets::{
         canvas::{Canvas, Points},
         Block, BorderType, Borders, List, ListItem, Paragraph,
@@ -49,7 +49,7 @@ where
     let chunks = base_chunk(rect.size());
 
     //add the status bar
-    let bar = info_bar(&app.get_selected_station().unwrap());
+    let bar = info_bar(app);
     rect.render_widget(bar, chunks[0]);
 
     //split the rect
@@ -89,7 +89,7 @@ where
         rect,
         &stations_chunks[1],
         &app.icon_list,
-        &app.get_selected_station().unwrap(),
+        &app.get_selected_station().unwrap_or_default(),
     );
 
     let footer = status_bar(app.get_status(), &app.music_title);
@@ -156,15 +156,33 @@ fn status_bar(status: Status, title: &str) -> Paragraph {
 /**
 Paragraph displaying information about current station
  */
-fn info_bar<'a>(station: &Station) -> Paragraph<'a> {
+fn info_bar<'a>(app: &App) -> Paragraph<'a> {
+    let station = if app.filter {
+        let mut s = Station::default();
+        s.title = "Search".to_string();
+        s.tooltip = app.input.value().to_string();
+        s
+    } else {
+        app.get_selected_station().unwrap_or_default()
+    };
+
     Paragraph::new(station.tooltip.to_string())
-        .style(Style::default())
-        .alignment(Alignment::Center)
+        .style(match app.filter {
+            true => Style::default().fg(Color::Yellow),
+            false => Style::default(),
+        })
+        .alignment(match app.filter {
+            true => Alignment::Left,
+            false => Alignment::Center,
+        })
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .style(Style::default())
+                .style(match app.filter {
+                    true => Style::default().fg(Color::Yellow),
+                    false => Style::default(),
+                })
                 .title(station.title.to_string()),
         )
 }
@@ -202,6 +220,10 @@ fn help_paragraph<'a>() -> Paragraph<'a> {
         Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
             "Add/remove from favorite", "f"
+        ))]),
+        Line::from(vec![Span::raw(format!(
+            "{:50}{:40}",
+            "Enter search mode", "/"
         ))]),
         Line::from(vec![Span::raw(format!(
             "{:50}{:40}",
