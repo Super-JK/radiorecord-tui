@@ -16,7 +16,8 @@ use std::thread;
 use std::time::Duration;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> color_eyre::Result<()> {
+    color_eyre::install()?;
     let matches = Command::new("Radio Record tui")
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -88,12 +89,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let (tx, rx) = channel::bounded(1);
 
                 let _conn = launch_mpris_server(mpris_tx, rx).await?;
+
                 thread::spawn(move || loop {
                     if mpris_rx.is_empty() {
                         thread::sleep(Duration::from_millis(200));
                         continue;
                     }
-                    match mpris_rx.recv().unwrap() {
+                    if let app::Event::Mpris(event) = mpris_rx.recv().unwrap() {
+                        match event {
                         mpris::Command::PlayPause => player.toggle_play(),
                         mpris::Command::Stop => player.stop(),
                         mpris::Command::Play => player.resume(),
@@ -120,6 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             };
                             tx.send(Response::Status(status.to_string())).unwrap();
                         }
+                    }
                     };
                 });
                 pause();

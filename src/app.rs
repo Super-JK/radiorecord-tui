@@ -1,5 +1,5 @@
 use crate::config::{read_favorite, toggle_to_favorite};
-use crate::mpris::{launch_mpris_server, Command, Response};
+use crate::mpris::{self, launch_mpris_server, Command, Response};
 use crate::tools::{read_icons, StationsArtList};
 use crate::ui::{render_help, render_stations};
 use crate::{
@@ -25,10 +25,11 @@ use tui::{backend::CrosstermBackend, widgets::ListState, Terminal};
 use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
 
-pub enum Event<I> {
-    Input(I),
+pub enum Event {
+    Input(KeyEvent),
     Tick,
     NowPlaying,
+    Mpris(mpris::Command),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -181,6 +182,7 @@ impl App {
             let amount_stations = self.get_stations_list().len();
 
             if selected >= amount_stations - 1 {
+                // wrap to start
                 self.stations_list_state.select(Some(0));
             } else {
                 self.stations_list_state.select(Some(selected + 1));
@@ -195,6 +197,7 @@ impl App {
             if selected > 0 {
                 self.stations_list_state.select(Some(selected - 1));
             } else {
+                // wrap to end
                 self.stations_list_state.select(Some(amount_stations - 1));
             }
         }
@@ -220,7 +223,7 @@ impl App {
         }
     }
 
-    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start(&mut self) -> color_eyre::Result<()> {
         println!("rrt is loading...");
 
         //prepare the terminal to be used
@@ -233,12 +236,11 @@ impl App {
 
         //setup event emitter and receiver
         let (tx, rx) = channel::bounded(1);
-        event_sender(tx);
+        event_sender(tx.clone());
 
-        let (mpris_tx, mpris_rx) = channel::bounded(1);
         let (player_tx, player_rx) = channel::bounded(1);
 
-        let _conn = launch_mpris_server(mpris_tx, player_rx).await?;
+        let _conn = launch_mpris_server(tx, player_rx).await?;
 
         loop {
             //draw the corresponding context each tick
@@ -246,39 +248,6 @@ impl App {
                 Context::Help => render_help(rect, self),
                 Context::Stations => render_stations(rect, self),
             })?;
-
-            // handle mpris commands if any
-            if !mpris_rx.is_empty() {
-                match mpris_rx.recv()? {
-                    Command::PlayPause => self.player.toggle_play(),
-                    Command::Stop => self.player.stop(),
-                    Command::Play => self.player.resume(),
-                    Command::Next => {
-                        self.next();
-                        let station = self.get_selected_station().unwrap();
-                        if self.player.force_play(&station.stream_320) {
-                            self.playing_station = station;
-                        }
-                    }
-                    Command::Previous => {
-                        self.previous();
-                        let station = self.get_selected_station().unwrap();
-                        if self.player.force_play(&station.stream_320) {
-                            self.playing_station = station;
-                        }
-                    }
-                    Command::NowPlaying => {
-                        player_tx
-                            .send(Response::NowPlaying(self.music_title.to_string()))
-                            .unwrap();
-                    }
-                    Command::Status => {
-                        player_tx
-                            .send(Response::Status(self.get_status().mpris_playing()))
-                            .unwrap();
-                    }
-                }
-            }
 
             //wait for a tick or keyPress before continuing
             match rx.recv()? {
@@ -324,6 +293,7 @@ impl App {
                                 if self.stations_list_fav.is_empty() {
                                     self.active_menu_item = MenuItem::Standard(true)
                                 } else if let Some(selected) = self.stations_list_state.selected() {
+                                    // if last move to previous
                                     if selected == self.get_stations_list().len() {
                                         self.stations_list_state.select(Some(selected - 1))
                                     }
@@ -405,6 +375,37 @@ impl App {
 
                 Event::Tick => {}
                 Event::NowPlaying => self.update_now_playing(),
+                Event::Mpris(event) => {
+                    match event {
+                        Command::PlayPause => self.player.toggle_play(),
+                        Command::Stop => self.player.stop(),
+                        Command::Play => self.player.resume(),
+                        Command::Next => {
+                            self.next();
+                            let station = self.get_selected_station().unwrap();
+                            if self.player.force_play(&station.stream_320) {
+                                self.playing_station = station;
+                            }
+                        }
+                        Command::Previous => {
+                            self.previous();
+                            let station = self.get_selected_station().unwrap();
+                            if self.player.force_play(&station.stream_320) {
+                                self.playing_station = station;
+                            }
+                        }
+                        Command::NowPlaying => {
+                            player_tx
+                                .send(Response::NowPlaying(self.music_title.to_string()))
+                                .unwrap();
+                        }
+                        Command::Status => {
+                            player_tx
+                                .send(Response::Status(self.get_status().mpris_playing()))
+                                .unwrap();
+                        }
+                    }
+                }
             }
         }
         Ok(())
@@ -414,7 +415,7 @@ impl App {
 /**
 Capture and resend key press as well as sending tick for refresh
  */
-fn event_sender(tx: Sender<Event<KeyEvent>>) {
+fn event_sender(tx: Sender<Event>) {
     thread::spawn(move || {
         let mut last_tick = Instant::now();
         #[cfg(feature = "libmpv_player")]

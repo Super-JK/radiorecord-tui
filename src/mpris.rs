@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use zbus::zvariant::Value;
 use zbus::{dbus_interface, Connection, ConnectionBuilder};
 
+use crate::app::Event;
+
 pub enum Command {
     PlayPause,
     Play,
@@ -19,7 +21,7 @@ pub enum Response {
 }
 
 pub struct MediaPlayerInterface {
-    pub tx: Sender<Command>,
+    pub tx: Sender<Event>,
     pub rx: Receiver<Response>,
 }
 
@@ -53,7 +55,7 @@ impl MediaPlayerInterface {
     }
     #[dbus_interface(property, name = "Metadata")]
     async fn Metadata(&self) -> HashMap<&str, Value> {
-        self.tx.send(Command::NowPlaying).expect("Could not send");
+        self.tx.send(Event::Mpris(Command::NowPlaying)).expect("Could not send");
         let mut map = HashMap::new();
         if let Response::NowPlaying(title) = self.rx.recv().unwrap() {
             map.insert("xesam:title", Value::from(title));
@@ -63,7 +65,7 @@ impl MediaPlayerInterface {
     }
     #[dbus_interface(property, name = "PlaybackStatus")]
     async fn PlaybackStatus(&self) -> String {
-        self.tx.send(Command::Status).expect("Could not send");
+        self.tx.send(Event::Mpris(Command::Status)).expect("Could not send");
         if let Ok(Response::Status(status)) = self.rx.recv() {
             status
         } else {
@@ -73,32 +75,32 @@ impl MediaPlayerInterface {
 
     // Can be `async` as well.
     async fn Next(&mut self) {
-        self.tx.send(Command::Next).expect("Could not send")
+        self.tx.send(Event::Mpris(Command::Next)).expect("Could not send")
     }
     async fn Previous(&mut self) {
-        self.tx.send(Command::Previous).expect("Could not send")
+        self.tx.send(Event::Mpris(Command::Previous)).expect("Could not send")
     }
 
     async fn Play(&mut self) {
-        self.tx.send(Command::Play).expect("Could not send")
+        self.tx.send(Event::Mpris(Command::Play)).expect("Could not send")
     }
     async fn Stop(&mut self) {
-        self.tx.send(Command::Stop).expect("Could not send");
+        self.tx.send(Event::Mpris(Command::Stop)).expect("Could not send");
     }
     async fn PlayPause(&mut self) {
-        self.tx.send(Command::PlayPause).expect("Could not send");
+        self.tx.send(Event::Mpris(Command::PlayPause)).expect("Could not send");
     }
 }
 
 pub async fn launch_mpris_server(
-    tx: Sender<Command>,
+    tx: Sender<Event>,
     rx: Receiver<Response>,
-) -> Result<Connection, Box<dyn std::error::Error>> {
+) -> color_eyre::Result<Connection> {
     let player = MediaPlayerInterface { tx, rx };
     let conn = ConnectionBuilder::session()?
         .name(INAME)?
         .serve_at("/org/mpris/MediaPlayer2", player)?
-        .build()
-        .await?;
+        .build().await?;
+
     Ok(conn)
 }

@@ -15,6 +15,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+color-eyre = "0.6"
 thiserror = "1.0"
 rand = "0.8"
 crossterm = { version = "0.27", features = ["serde"] }
@@ -41,6 +42,9 @@ image="0.24"
 tokio = { version = "1", features = ["full"] }
 zbus = { version = "3.13", default-features = false, features = ["tokio"] }
 crossbeam = "0.8"
+
+[profile.dev.package.backtrace]
+opt-level = 3
 
 [features]
 default = ["libmpv_player"]
