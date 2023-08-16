@@ -9,73 +9,65 @@ mod ui;
 use crate::api::stations_list;
 use crate::mpris::{launch_mpris_server, Response};
 use crate::tools::pause;
-use clap::{Arg, Command};
+use clap::{Parser, Subcommand};
 use crossbeam::channel;
 use rand::random;
+use std::process::exit;
 use std::thread;
 use std::time::Duration;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+      
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// List available stations
+    List{
+        #[arg(short, long, default_value_t = false)]
+        line: bool, 
+    },
+    /// Play the specified station (random if none)
+    Play{
+        #[arg(short, long)]
+        station:Option<String>,
+    },
+}
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
-    let matches = Command::new("Radio Record tui")
-        .version(env!("CARGO_PKG_VERSION"))
-        .author(env!("CARGO_PKG_AUTHORS"))
-        .about(env!("CARGO_PKG_DESCRIPTION"))
-        //.usage("Press `h` while running the app to see keybindings")
-        .subcommand(
-            Command::new("list").about("List available stations").arg(
-                Arg::new("line")
-                    .help("Display the list in one line")
-                    .value_name("line")
-                    .long("line")
-                    .short('l')
-                    .required(false)
-                    .takes_value(false),
-            ),
-        )
-        .subcommand(
-            Command::new("play")
-                .about("Play stream from chosen station")
-                .arg(
-                    Arg::new("station")
-                        .help("Station to play")
-                        .value_name("station")
-                        .long("station")
-                        .short('s')
-                        .takes_value(true)
-                        .required(false),
-                ),
-        )
-        .get_matches();
-
-    if let Some(cmd) = matches.subcommand_name() {
-        // Safe, because we checked if the subcommand is present at runtime
-        let m = matches.subcommand_matches(cmd).unwrap();
+    let cli = Cli::parse();
+    
+    if let Some(cmd) = cli.command {
         let list = stations_list().unwrap();
         match cmd {
-            "list" => {
+           Commands::List{line} => {
                 let mut s = String::new();
-                let line = m.is_present("line");
                 for station in list {
                     if line {
                         s.push_str(&format!("{}, ", station.prefix));
                     } else {
-                        s.push_str(&format!("{}\n", station.prefix));
+                        s.push_str(&format!("{} : {}\n", station.title, station.prefix));
                     }
                 }
                 println!("{}", s);
             }
-            "play" => {
+            Commands::Play{station} => {
                 // background player in cli
 
                 let mut player = player::Player::new(list[0].stream_320.clone());
-                if let Some(st) = m.value_of("station") {
+                if let Some(station) = station {
                     // if a station is selected play it
-                    if let Some(station_found) = list.iter().find(|station| station.prefix == st) {
+                    if let Some(station_found) = list.iter().find(|s| s.prefix == station) {
                         player.play(&station_found.stream_320);
                     } else {
-                        panic!("Station not found")
+                        eprintln!("Station not found");
+                        exit(1);
                     }
                 } else {
                     // play random station
@@ -127,9 +119,6 @@ async fn main() -> color_eyre::Result<()> {
                     };
                 });
                 pause();
-            }
-            &_ => {
-                eprint!("Command not found")
             }
         }
         Ok(())

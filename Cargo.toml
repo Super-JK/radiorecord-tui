@@ -24,7 +24,7 @@ tui = { package="ratatui", version = "0.22", default-features = false, features 
     'serde',
 ] }
 tui-input = "0.8"
-clap = "3.2"
+clap = { version="4.3", features=["derive", "color"] }
 
 rodio = { version = "0.17", default-features = false, features = [
     'symphonia-aac',
