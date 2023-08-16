@@ -157,21 +157,21 @@ fn status_bar(status: Status, title: &str) -> Paragraph {
 Paragraph displaying information about current station
  */
 fn info_bar<'a>(app: &App) -> Paragraph<'a> {
-    let station = if app.filter {
+    let station = if app.filtering {
         let mut s = Station::default();
         s.title = "Search".to_string();
-        s.tooltip = app.input.value().to_string();
+        s.tooltip = app.filter.value().to_string();
         s
     } else {
         app.get_selected_station().unwrap_or_default()
     };
 
     Paragraph::new(station.tooltip.to_string())
-        .style(match app.filter {
+        .style(match app.filtering {
             true => Style::default().fg(Color::Yellow),
             false => Style::default(),
         })
-        .alignment(match app.filter {
+        .alignment(match app.filtering {
             true => Alignment::Left,
             false => Alignment::Center,
         })
@@ -179,7 +179,7 @@ fn info_bar<'a>(app: &App) -> Paragraph<'a> {
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .style(match app.filter {
+                .style(match app.filtering {
                     true => Style::default().fg(Color::Yellow),
                     false => Style::default(),
                 })

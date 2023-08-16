@@ -68,10 +68,11 @@ impl Player {
                         mpv.pause().unwrap()
                     }
                     PlayerCommand::NowPlaying => {
-                        let mut title = "Loading...".to_string();
-                        if let Ok(title_) = mpv.get_property::<String>("media-title") {
-                            title = title_;
-                        }
+                        let title = if let Ok(title) = mpv.get_property::<String>("media-title") {
+                            title
+                        } else {
+                            "Loading...".to_string()
+                        };
                         sender_interface
                             .send(PlayerResponse::NowPlaying(title))
                             .unwrap();

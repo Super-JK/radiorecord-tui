@@ -50,6 +50,16 @@ pub struct Status {
     pub playing: bool,
 }
 
+impl Status {
+    pub fn mpris_playing(&self) -> String {
+        if self.playing {
+            "Playing".to_string()
+        } else {
+            "Stopped".to_string()
+        }
+    }
+}
+
 impl Display for Status {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let np = match self.playing {
@@ -66,12 +76,13 @@ pub struct App {
     player: Player,
     pub icon_list: StationsArtList,
     active_context: Context,
-    pub filter: bool,
+    pub filtering: bool,
     pub music_title: String,
     pub stations_list_state: ListState,
     pub playing_station: Station,
     pub active_menu_item: MenuItem,
-    pub input: Input,
+    pub filter: Input,
+    last_selected: Option<usize>,
 }
 
 impl App {
@@ -119,8 +130,9 @@ impl App {
             stations_list_state,
             playing_station,
             active_menu_item,
-            filter: false,
-            input,
+            filtering: false,
+            filter: input,
+            last_selected: None,
         }
     }
 
@@ -130,8 +142,9 @@ impl App {
             _ => self.get_stations_list_std(),
         }
     }
+
     fn get_filtered_station<'a>(&'a self, stations: &'a [Station]) -> Vec<&Station> {
-        let value = self.input.value().to_lowercase();
+        let value = self.filter.value().to_lowercase();
         stations
             .iter()
             .filter(|s| {
@@ -147,6 +160,7 @@ impl App {
     pub fn get_stations_list_fav(&self) -> Vec<&Station> {
         self.get_filtered_station(&self.stations_list_fav)
     }
+
     pub fn get_status(&self) -> Status {
         Status {
             station: self.playing_station.clone(),
@@ -155,12 +169,11 @@ impl App {
     }
 
     pub fn get_selected_station(&self) -> Option<Station> {
-        if self.get_stations_list().is_empty() {
-            return None;
+        if let Some(selected) = self.stations_list_state.selected() {
+            self.get_stations_list().get(selected).cloned().cloned()
+        } else {
+            None
         }
-        self.stations_list_state
-            .selected()
-            .map(|selected| self.get_stations_list()[selected].clone())
     }
 
     fn next(&mut self) {
@@ -186,7 +199,12 @@ impl App {
             }
         }
     }
-
+    fn toggle_context(&mut self) {
+        self.active_menu_item = match self.active_menu_item {
+            MenuItem::Favorite(b) => MenuItem::Favorite(!b),
+            MenuItem::Standard(b) => MenuItem::Standard(!b),
+        };
+    }
     fn update_now_playing(&mut self) {
         #[cfg(feature = "libmpv_player")]
         {
@@ -255,13 +273,8 @@ impl App {
                             .unwrap();
                     }
                     Command::Status => {
-                        let playing = if self.get_status().playing {
-                            "Playing"
-                        } else {
-                            "Stopped"
-                        };
                         player_tx
-                            .send(Response::Status(playing.to_string()))
+                            .send(Response::Status(self.get_status().mpris_playing()))
                             .unwrap();
                     }
                 }
@@ -270,16 +283,26 @@ impl App {
             //wait for a tick or keyPress before continuing
             match rx.recv()? {
                 Event::Input(event) => {
-                    if self.filter {
+                    if self.filtering {
                         match event.code {
-                            KeyCode::Esc => self.input.reset(),
+                            KeyCode::Esc => {
+                                self.filter.reset();
+                                if let Some(last_id) = self.last_selected {
+                                    let pos = self
+                                        .get_stations_list()
+                                        .iter()
+                                        .position(|s| s.id == last_id);
+                                    self.stations_list_state.select(pos);
+                                }
+                                self.toggle_context();
+                            }
                             KeyCode::Enter => {}
                             _ => {
-                                self.input.handle_event(&CEvent::Key(event));
+                                self.filter.handle_event(&CEvent::Key(event));
                                 continue;
                             }
                         }
-                        self.filter = !self.filter;
+                        self.filtering = !self.filtering;
                         continue;
                     }
                     match event.code {
@@ -298,13 +321,12 @@ impl App {
                                 self.stations_list_fav =
                                     toggle_to_favorite(&selected_station).expect("can add to fav");
 
-                                if let Some(selected) = self.stations_list_state.selected() {
+                                if self.stations_list_fav.is_empty() {
+                                    self.active_menu_item = MenuItem::Standard(true)
+                                } else if let Some(selected) = self.stations_list_state.selected() {
                                     if selected == self.get_stations_list().len() {
                                         self.stations_list_state.select(Some(selected - 1))
                                     }
-                                }
-                                if self.stations_list_fav.is_empty() {
-                                    self.active_menu_item = MenuItem::Standard(true)
                                 }
                             }
                         }
@@ -366,18 +388,14 @@ impl App {
                         KeyCode::Esc => match self.active_context {
                             Context::Help => self.active_context = Context::Stations,
                             Context::Stations => {
-                                self.active_menu_item = match self.active_menu_item {
-                                    MenuItem::Favorite(true) => MenuItem::Favorite(false),
-                                    MenuItem::Standard(true) => MenuItem::Standard(false),
-                                    _ => MenuItem::Standard(false),
-                                }
+                                self.toggle_context();
                             }
                         },
                         KeyCode::Char('/') => {
                             if let Context::Stations = self.active_context {
-                                self.filter = !self.filter;
-                                self.active_menu_item = MenuItem::Standard(false);
-                                self.stations_list_state.select(None);
+                                self.filtering = !self.filtering;
+                                self.toggle_context();
+                                self.last_selected = self.get_selected_station().map(|s| s.id);
                             }
                         }
 
