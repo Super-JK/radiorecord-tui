@@ -61,10 +61,11 @@ async fn main() -> color_eyre::Result<()> {
                 // background player in cli
 
                 let mut player = player::Player::new(list[0].stream_320.clone());
-                if let Some(station) = station {
+                let mut station_name = if let Some(station) = station {
                     // if a station is selected play it
                     if let Some(station_found) = list.iter().find(|s| s.prefix == station) {
                         player.play(&station_found.stream_320);
+                        station_found.title.clone()
                     } else {
                         eprintln!("Station not found");
                         exit(1);
@@ -73,15 +74,17 @@ async fn main() -> color_eyre::Result<()> {
                     // play random station
                     let random = random::<usize>() % list.len();
                     let station = &list[random];
-                    println!("Now playing : {}", station.title);
                     player.play(&station.stream_320);
-                }
+                    station.title.clone()
+                };
+
+                println!("Now playing : {}", station_name);
                 // launch and handle mpris interface
                 let (mpris_tx, mpris_rx) = channel::bounded(1);
                 let (tx, rx) = channel::bounded(1);
 
                 let _conn = launch_mpris_server(mpris_tx, rx).await?;
-
+                
                 thread::spawn(move || loop {
                     if mpris_rx.is_empty() {
                         thread::sleep(Duration::from_millis(200));
@@ -94,7 +97,8 @@ async fn main() -> color_eyre::Result<()> {
                         mpris::Command::Play => player.resume(),
                         mpris::Command::Next => {
                             let random = random::<usize>() % list.len();
-                            let station = &list[random];
+                            let station = list[random].clone();
+                            station_name = station.title.clone();
                             println!("Now playing : {}", station.title);
                             player.force_play(&station.stream_320);
                         }
@@ -103,7 +107,7 @@ async fn main() -> color_eyre::Result<()> {
                             #[cfg(feature = "libmpv_player")]
                             {
                                 if let Some(title) = player.now_playing() {
-                                    tx.send(Response::NowPlaying(title)).unwrap();
+                                    tx.send(Response::NowPlaying{title,artist:station_name.clone()}).unwrap();
                                 }
                             }
                         }

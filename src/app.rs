@@ -396,7 +396,7 @@ impl App {
                         }
                         Command::NowPlaying => {
                             player_tx
-                                .send(Response::NowPlaying(self.music_title.to_string()))
+                                .send(Response::NowPlaying{title:self.music_title.to_string(),artist:self.playing_station.title.clone()})
                                 .unwrap();
                         }
                         Command::Status => {
