@@ -19,7 +19,7 @@ color-eyre = "0.6"
 thiserror = "1.0"
 rand = "0.8"
 crossterm = { version = "0.27", features = ["serde"] }
-tui = { package="ratatui", version = "0.22", default-features = false, features = [
+tui = { package="ratatui", version = "0.26", default-features = false, features = [
     'crossterm',
     'serde',
 ] }

@@ -1,5 +1,4 @@
 use tui::{
-    backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols,
@@ -24,10 +23,7 @@ const ACCENT_COLOR: Color = Color::Yellow;
 /**
 Display the help menu on the terminal
  */
-pub fn render_help<B>(rect: &mut Frame<B>, _app: &App)
-where
-    B: Backend,
-{
+pub fn render_help(rect: &mut Frame, _app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(100)].as_ref())
@@ -41,10 +37,7 @@ Display the main menu on the terminal
 
 It used corresponding function  to generate each part and split the terminal into different zones
  */
-pub fn render_stations<B>(rect: &mut Frame<B>, app: &mut App)
-where
-    B: Backend,
-{
+pub fn render_stations(rect: &mut Frame, app: &mut App) {
     //get base layout
     let chunks = base_chunk(rect.size());
 
@@ -297,14 +290,12 @@ fn make_stations_list<'a>(stations_list: &[&Station], title: &'a str, style: Sty
 /**
 Canvas with the stations icon
  */
-fn make_icon<B>(
-    rect: &mut Frame<B>,
+fn make_icon(
+    rect: &mut Frame,
     stations_chunks: &Rect,
     icon_list: &StationsArtList,
     selected_station: &Station,
-) where
-    B: Backend,
-{
+) {
     let double = stations_chunks.width / 2 > stations_chunks.height;
     let canvas_size = 200.0;
     let icon_canvas = Canvas::default()
