@@ -1,7 +1,7 @@
 use crossbeam::channel::{Receiver, Sender};
 use std::collections::HashMap;
 use zbus::zvariant::Value;
-use zbus::{dbus_interface, Connection, ConnectionBuilder};
+use zbus::{interface, Connection, ConnectionBuilder};
 
 use crate::app::Event;
 
@@ -31,29 +31,29 @@ const INAME: &str = "org.mpris.MediaPlayer2.rrt_test";
 const INAME: &str = "org.mpris.MediaPlayer2.rrt";
 
 #[allow(non_snake_case)]
-#[dbus_interface(name = "org.mpris.MediaPlayer2.Player")]
+#[interface(name = "org.mpris.MediaPlayer2.Player")]
 impl MediaPlayerInterface {
-    #[dbus_interface(property, name = "CanControl")]
+    #[zbus(property, name = "CanControl")]
     fn CanControl(&self) -> bool {
         true
     }
-    #[dbus_interface(property, name = "CanPlay")]
+    #[zbus(property, name = "CanPlay")]
     fn CanPlay(&self) -> bool {
         true
     }
-    #[dbus_interface(property, name = "CanStop")]
+    #[zbus(property, name = "CanStop")]
     fn CanStop(&self) -> bool {
         true
     }
-    #[dbus_interface(property, name = "CanGoNext")]
+    #[zbus(property, name = "CanGoNext")]
     fn CanGoNext(&self) -> bool {
         true
     }
-    #[dbus_interface(property, name = "CanGoPrevious")]
+    #[zbus(property, name = "CanGoPrevious")]
     fn CanGoPrevious(&self) -> bool {
         true
     }
-    #[dbus_interface(property, name = "Metadata")]
+    #[zbus(property, name = "Metadata")]
     async fn Metadata(&self) -> HashMap<&str, Value> {
         self.tx
             .send(Event::Mpris(Command::NowPlaying))
@@ -66,7 +66,7 @@ impl MediaPlayerInterface {
         }
         map
     }
-    #[dbus_interface(property, name = "PlaybackStatus")]
+    #[zbus(property, name = "PlaybackStatus")]
     async fn PlaybackStatus(&self) -> String {
         self.tx
             .send(Event::Mpris(Command::Status))
